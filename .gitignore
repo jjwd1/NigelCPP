@@ -7,10 +7,3 @@ out/
 
 # LibTorch (too large, download separately)
 GigaLearnCPP/libtorch/
-
-# Runtime files
-*.exe
-*.dll
-*.pdb
-config.json
-metrics.json
