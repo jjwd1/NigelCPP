@@ -40,7 +40,7 @@ RLGC::EnvCreateResult EnvCreateFunc(int index) {
 		{ new PowerShotReward(40, 130), 4.48f },
 		{ new FlickWhenPressuredReward(), 5.0f },
 		{ new ZeroSumReward(new BumpReward(), 0.5f), 0.75f },
-		{ new WallToAirReward(), 18.0f },
+		{ new WallToAirReward(), 15.0f },
 		{ new GoForAerialReward(300), 9.6f },
 		{ new AerialTouchReward(200), 36.0f },
 		{ new AirDribbleReward(300, 250), 1.44f },

@@ -167,6 +167,10 @@ QString NGL::TrainingBridge::networkInfo() const {
 void NGL::TrainingBridge::start() {
 	if (m_isTraining || m_trainer) return;
 
+	// Clear cached reward data so it repopulates from current code
+	m_metrics.rewardBreakdown.clear();
+	m_cachedRewardWeights.clear();
+
 	m_isTraining = true;
 	Q_EMIT isTrainingChanged();
 	Q_EMIT metricsUpdated();

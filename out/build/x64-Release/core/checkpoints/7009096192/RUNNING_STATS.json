@@ -1,0 +1,9 @@
+{
+    "return_stat": {
+        "count": 9690000,
+        "mean": 60.7537413194077,
+        "var": 170174450937.8617
+    },
+    "total_iterations": 64600,
+    "total_timesteps": 7009096192
+}
