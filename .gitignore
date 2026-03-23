@@ -1,5 +1,12 @@
-# Build output
-out/
+# Build output (but not checkpoints — those are training data)
+out/*
+!out/build/
+out/build/*
+!out/build/x64-Release/
+out/build/x64-Release/*
+!out/build/x64-Release/core/
+out/build/x64-Release/core/*
+!out/build/x64-Release/core/checkpoints/
 
 # Visual Studio
 .vs/

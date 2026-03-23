@@ -142,9 +142,7 @@ int main(int argc, char* argv[]) {
 
 	// Build default training config
 	TrainConfig cfg = {};
-	// Use repo-root checkpoints/ so they're git-tracked (3 levels up from exe in out/build/x64-Release/core/)
-	auto repoRoot = exeDir.parent_path().parent_path().parent_path().parent_path();
-	cfg.checkpointFolder = (repoRoot / "checkpoints").string();
+	cfg.checkpointFolder = (exeDir / "checkpoints").string();
 	cfg.deviceType = DeviceType::GPU_CUDA;
 	cfg.tickSkip = 8;
 	cfg.actionDelay = cfg.tickSkip - 1;
