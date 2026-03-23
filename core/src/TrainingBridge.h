@@ -91,6 +91,7 @@ namespace NGL {
 		Q_PROPERTY(bool cfgTrainAgainstOld READ cfgTrainAgainstOld WRITE setCfgTrainAgainstOld NOTIFY configChanged)
 		Q_PROPERTY(double cfgTrainAgainstOldChance READ cfgTrainAgainstOldChance WRITE setCfgTrainAgainstOldChance NOTIFY configChanged)
 		Q_PROPERTY(int cfgCheckpointsToKeep READ cfgCheckpointsToKeep WRITE setCfgCheckpointsToKeep NOTIFY configChanged)
+		Q_PROPERTY(quint64 autoStopTimesteps READ autoStopTimesteps WRITE setAutoStopTimesteps NOTIFY configChanged)
 		Q_PROPERTY(int cfgDeviceType READ cfgDeviceType WRITE setCfgDeviceType NOTIFY configChanged)
 		Q_PROPERTY(int cfgRandomSeed READ cfgRandomSeed WRITE setCfgRandomSeed NOTIFY configChanged)
 		Q_PROPERTY(bool cfgHalfPrecision READ cfgHalfPrecision WRITE setCfgHalfPrecision NOTIFY configChanged)
@@ -165,6 +166,7 @@ namespace NGL {
 		bool cfgTrainAgainstOld() const { return m_config.trainAgainstOldVersions; }
 		double cfgTrainAgainstOldChance() const { return m_config.trainAgainstOldChance; }
 		int cfgCheckpointsToKeep() const { return m_config.checkpointsToKeep; }
+		quint64 autoStopTimesteps() const { return m_autoStopTimesteps; }
 		int cfgDeviceType() const { return (int)m_config.deviceType; }
 		int cfgRandomSeed() const { return (int)m_config.randomSeed; }
 		bool cfgHalfPrecision() const { return m_config.ppo.useHalfPrecision; }
@@ -189,6 +191,7 @@ namespace NGL {
 		void setCfgTrainAgainstOld(bool v) { m_config.trainAgainstOldVersions = v; Q_EMIT configChanged(); }
 		void setCfgTrainAgainstOldChance(double v) { m_config.trainAgainstOldChance = (float)v; Q_EMIT configChanged(); }
 		void setCfgCheckpointsToKeep(int v) { m_config.checkpointsToKeep = v; Q_EMIT configChanged(); }
+		void setAutoStopTimesteps(quint64 v) { m_autoStopTimesteps = v; Q_EMIT configChanged(); }
 		void setCfgDeviceType(int v) { m_config.deviceType = (DeviceType)v; Q_EMIT configChanged(); }
 		void setCfgRandomSeed(int v) { m_config.randomSeed = v; Q_EMIT configChanged(); }
 		void setCfgHalfPrecision(bool v) { m_config.ppo.useHalfPrecision = v; Q_EMIT configChanged(); }
@@ -254,6 +257,9 @@ namespace NGL {
 
 		// Cached reward weights for display when trainer isn't running
 		QVariantList m_cachedRewardWeights;
+
+		// Auto-stop
+		quint64 m_autoStopTimesteps = 0;  // 0 = disabled
 
 		// Console log
 		static constexpr int MAX_LOG_LINES = 500;

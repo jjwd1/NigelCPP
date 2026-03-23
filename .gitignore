@@ -14,3 +14,15 @@ out/build/x64-Release/core/*
 
 # LibTorch (too large, download separately)
 GigaLearnCPP/libtorch/
+libtorch_cpu/
+
+# Bot DLL build output + runtime DLLs (from LibTorch, downloadable)
+bot/out/
+bot/*.dll
+bot/*.exe
+
+# Debug logs
+bot_debug.log
+
+# Plan files (local reference only)
+plan_*.txt

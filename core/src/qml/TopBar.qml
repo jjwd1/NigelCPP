@@ -119,6 +119,121 @@ Rectangle {
             visible: training.isTraining
         }
 
+        // Auto-stop input (always visible)
+        RowLayout {
+            spacing: 4
+            Text {
+                text: "Auto-stop"
+                color: Theme.textMuted
+                font.pixelSize: 12
+            }
+            ComboBox {
+                id: autoStopPreset
+                implicitWidth: 70
+                implicitHeight: 28
+                model: {
+                    var items = ["off"]
+                    for (var i = 1; i <= 100; i++) items.push(i + "B")
+                    return items
+                }
+                currentIndex: {
+                    if (training.autoStopTimesteps <= 0) return 0
+                    var b = Math.round(training.autoStopTimesteps / 1e9)
+                    return (b >= 1 && b <= 100) ? b : 0
+                }
+                onActivated: function(index) {
+                    if (index === 0) {
+                        training.autoStopTimesteps = 0
+                        autoStopField.text = ""
+                    } else {
+                        var val = index * 1000000000
+                        training.autoStopTimesteps = val
+                        autoStopField.text = val.toString()
+                    }
+                }
+                font.pixelSize: 12
+                font.family: "Consolas"
+                contentItem: Text {
+                    leftPadding: 8
+                    text: autoStopPreset.displayText
+                    color: Theme.textPrimary
+                    font: autoStopPreset.font
+                    verticalAlignment: Text.AlignVCenter
+                }
+                background: Rectangle {
+                    radius: 6
+                    color: Theme.bgCard
+                    border.width: 1
+                    border.color: autoStopPreset.pressed ? Theme.accent : Theme.border
+                }
+                indicator: Text {
+                    x: autoStopPreset.width - width - 6
+                    anchors.verticalCenter: parent.verticalCenter
+                    text: "\u25BE"
+                    color: Theme.textMuted
+                    font.pixelSize: 10
+                }
+                delegate: ItemDelegate {
+                    width: autoStopPreset.width
+                    height: 26
+                    contentItem: Text {
+                        text: modelData
+                        color: highlighted ? Theme.accent : Theme.textPrimary
+                        font: autoStopPreset.font
+                        verticalAlignment: Text.AlignVCenter
+                    }
+                    highlighted: autoStopPreset.highlightedIndex === index
+                    background: Rectangle {
+                        color: highlighted ? Theme.bgTertiary : "transparent"
+                    }
+                }
+                popup: Popup {
+                    y: autoStopPreset.height + 2
+                    width: autoStopPreset.width
+                    height: Math.min(200, contentItem.implicitHeight + 2)
+                    padding: 1
+                    contentItem: ListView {
+                        clip: true
+                        implicitHeight: contentHeight
+                        model: autoStopPreset.delegateModel
+                        ScrollBar.vertical: ScrollBar { policy: ScrollBar.AsNeeded }
+                    }
+                    background: Rectangle {
+                        radius: 6
+                        color: Theme.bgCard
+                        border.width: 1
+                        border.color: Theme.border
+                    }
+                }
+            }
+            TextField {
+                id: autoStopField
+                implicitWidth: 80
+                implicitHeight: 28
+                text: training.autoStopTimesteps > 0 ? training.autoStopTimesteps.toString() : ""
+                placeholderText: "custom"
+                font.pixelSize: 12
+                font.family: "Consolas"
+                color: Theme.textPrimary
+                horizontalAlignment: Text.AlignRight
+                background: Rectangle {
+                    radius: 6
+                    color: Theme.bgCard
+                    border.width: 1
+                    border.color: autoStopField.activeFocus ? Theme.accent : Theme.border
+                }
+                onEditingFinished: {
+                    var s = text.trim().toLowerCase()
+                    var val = 0
+                    if (s.endsWith("b")) val = Math.round(parseFloat(s) * 1e9)
+                    else if (s.endsWith("m")) val = Math.round(parseFloat(s) * 1e6)
+                    else if (s.endsWith("k")) val = Math.round(parseFloat(s) * 1e3)
+                    else val = parseInt(s)
+                    training.autoStopTimesteps = isNaN(val) ? 0 : val
+                }
+            }
+        }
+
         // Visualize button (only when idle)
         NigelButton {
             visible: !training.isTraining

@@ -337,6 +337,13 @@ void NGL::TrainingBridge::pollMetrics() {
 
 	saveMetrics();
 	Q_EMIT metricsUpdated();
+
+	// Auto-stop check
+	if (m_autoStopTimesteps > 0 && m_metrics.totalTimesteps >= m_autoStopTimesteps) {
+		log("Auto-stop triggered at " + QString::number(m_metrics.totalTimesteps) + " steps (target: " + QString::number(m_autoStopTimesteps) + ")");
+		save();
+		stop();
+	}
 }
 
 void NGL::TrainingBridge::pollGPU() {

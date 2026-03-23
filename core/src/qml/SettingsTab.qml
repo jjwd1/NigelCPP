@@ -191,7 +191,6 @@ Item {
                 enabled: !training.isTraining
                 onEdited: training.cfgCheckpointsToKeep = parseInt(newValue)
             }
-
             Item { Layout.preferredHeight: 4 }
 
             // ── PERFORMANCE ──
