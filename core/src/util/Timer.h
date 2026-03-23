@@ -1,0 +1,20 @@
+#pragma once
+#include "../Framework.h"
+
+namespace NGL {
+	struct Timer {
+		std::chrono::high_resolution_clock::time_point startTime;
+
+		Timer() { Reset(); }
+
+		double Elapsed() {
+			auto endTime = std::chrono::high_resolution_clock::now();
+			std::chrono::duration<double> elapsed = endTime - startTime;
+			return elapsed.count();
+		}
+
+		void Reset() {
+			startTime = std::chrono::high_resolution_clock::now();
+		}
+	};
+}

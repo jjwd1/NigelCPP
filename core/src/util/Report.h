@@ -1,0 +1,70 @@
+#pragma once
+#include "../Framework.h"
+#include "Utils.h"
+
+namespace NGL {
+	struct Report {
+		typedef double Val;
+		std::unordered_map<std::string, Val> data;
+
+		struct Avg {
+			Val total = 0;
+			uint64_t count = 0;
+			Avg() = default;
+		};
+
+		std::unordered_map<std::string, Avg> avgs;
+
+		Report() = default;
+
+		Val& operator[](const std::string& key) { return data[key]; }
+		Val operator[](const std::string& key) const { return data.at(key); }
+
+		bool Has(const std::string& key) const { return data.find(key) != data.end(); }
+
+		void Add(const std::string& key, Val val) {
+			if (Has(key)) data[key] += val;
+			else data[key] = val;
+		}
+
+		void AddAvg(const std::string& key, Val val) {
+			auto& avg = avgs[key];
+			avg.total += val;
+			avg.count++;
+		}
+
+		void FinishAvg(const std::string& key) {
+			auto itr = avgs.find(key);
+			if (itr == avgs.end())
+				RG_ERR_CLOSE("Cannot call Report::FinishAvg() on non-existent average \"" << key << "\"!");
+			data[key] = itr->second.total / (Val)itr->second.count;
+			avgs.erase(itr);
+		}
+
+		std::string SingleToString(const std::string& key, bool digitCommas = false) const {
+			Val val = (*this)[key];
+			return key + ": " + Utils::NumToStr(val);
+		}
+
+		void Finish() {
+			for (auto& pair : avgs)
+				data[pair.first] = pair.second.total / (Val)pair.second.count;
+			avgs.clear();
+		}
+
+		void Clear() { *this = Report(); }
+
+		Report operator+(const Report& other) const {
+			Report newReport = *this;
+			newReport.data.insert(other.data.begin(), other.data.end());
+			return newReport;
+		}
+
+		Report& operator+=(const Report& other) {
+			*this = *this + other;
+			return *this;
+		}
+
+		void Display(std::vector<std::string> keyRows) const;
+	};
+}
