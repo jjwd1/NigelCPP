@@ -25,7 +25,7 @@ Rectangle {
                 Layout.fillWidth: true
 
                 MetricRow { label: "Overall SPS"; value: Math.round(training.overallSPS).toLocaleString(); unit: "steps/s" }
-                MetricRow { label: "Avg SPS (10 itr)"; value: Math.round(training.avgSPS).toLocaleString(); unit: "steps/s"; highlight: true }
+                MetricRow { label: "Avg SPS (session)"; value: Math.round(training.avgSPS).toLocaleString(); unit: "steps/s"; highlight: true }
                 MetricRow { label: "Collection SPS"; value: Math.round(training.collectionSPS).toLocaleString(); unit: "steps/s" }
                 MetricRow { label: "Consumption SPS"; value: Math.round(training.consumptionSPS).toLocaleString(); unit: "steps/s" }
             }

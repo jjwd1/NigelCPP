@@ -81,11 +81,11 @@ Item {
                 }
                 Item { Layout.fillWidth: true }
                 Text {
-                    text: "Bar"
+                    text: "% of Total"
                     color: Theme.textMuted
                     font.pixelSize: 11
                     font.weight: Font.DemiBold
-                    Layout.preferredWidth: 200
+                    Layout.preferredWidth: 250
                     horizontalAlignment: Text.AlignCenter
                 }
             }
@@ -164,36 +164,39 @@ Item {
 
                         Item { Layout.fillWidth: true }
 
-                        // Centered bar
+                        // Percentage bar
                         Item {
-                            Layout.preferredWidth: 200
-                            Layout.preferredHeight: 12
+                            Layout.preferredWidth: 250
+                            Layout.preferredHeight: 20
+
+                            property real totalVal: getTotalAbsReward()
+                            property real pct: totalVal > 0 ? modelData.value / totalVal * 100 : 0
 
                             Rectangle {
-                                anchors.centerIn: parent
-                                width: 200
-                                height: 4
-                                radius: 2
+                                anchors.left: parent.left
+                                anchors.verticalCenter: parent.verticalCenter
+                                width: 190
+                                height: 14
+                                radius: 4
                                 color: Theme.bgTertiary
 
                                 Rectangle {
-                                    x: parent.width / 2
-                                    width: 1
+                                    width: Math.abs(parent.parent.pct) / 100 * parent.width
                                     height: parent.height
-                                    color: Theme.borderLight
-                                }
-
-                                Rectangle {
-                                    property real maxVal: getMaxReward()
-                                    property real normalizedVal: maxVal > 0 ? modelData.value / maxVal : 0
-                                    property real barWidth: Math.abs(normalizedVal) * parent.width / 2
-
-                                    x: normalizedVal >= 0 ? parent.width / 2 : parent.width / 2 - barWidth
-                                    width: barWidth
-                                    height: parent.height
-                                    radius: 2
+                                    radius: 4
                                     color: modelData.value >= 0 ? Theme.accentGreen : Theme.accentRed
+                                    opacity: 0.85
                                 }
+                            }
+
+                            Text {
+                                anchors.right: parent.right
+                                anchors.verticalCenter: parent.verticalCenter
+                                text: parent.pct.toFixed(1) + "%"
+                                color: Theme.textPrimary
+                                font.pixelSize: 13
+                                font.family: "Consolas"
+                                font.weight: Font.DemiBold
                             }
                         }
                     }
@@ -212,13 +215,11 @@ Item {
         }
     }
 
-    function getMaxReward() {
-        var maxVal = 0.001
+    function getTotalAbsReward() {
+        var total = 0
         var breakdown = rewardsRoot._breakdownModel
-        for (var i = 0; i < breakdown.length; i++) {
-            var v = Math.abs(breakdown[i].value)
-            if (v > maxVal) maxVal = v
-        }
-        return maxVal
+        for (var i = 0; i < breakdown.length; i++)
+            total += Math.abs(breakdown[i].value)
+        return total
     }
 }

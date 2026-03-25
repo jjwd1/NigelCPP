@@ -243,10 +243,14 @@ namespace NGL {
 		QProcess* m_visProcess = nullptr;
 		bool m_isTraining = false;
 
-		// Rolling average SPS (last 10 iterations)
-		static constexpr int AVG_SPS_WINDOW = 10;
-		std::deque<double> m_recentSPS;
+		// Session average SPS (all iterations since start)
+		double m_spsSumSession = 0;
+		int m_spsCountSession = 0;
 		double m_avgSPS = 0;
+
+		// Session average reward breakdown
+		std::unordered_map<std::string, double> m_rewardBreakdownSum;
+		int m_rewardBreakdownCount = 0;
 
 		static constexpr int MAX_HISTORY = 200;
 		QVariantList m_rewardHistory;
@@ -257,6 +261,9 @@ namespace NGL {
 
 		// Cached reward weights for display when trainer isn't running
 		QVariantList m_cachedRewardWeights;
+
+		// User-edited weight overrides (only weights changed via UI)
+		std::unordered_map<std::string, float> m_userWeightOverrides;
 
 		// Auto-stop
 		quint64 m_autoStopTimesteps = 0;  // 0 = disabled

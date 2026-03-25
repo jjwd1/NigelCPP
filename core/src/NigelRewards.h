@@ -368,13 +368,7 @@ namespace RLGC {
 			// Scale by height — higher touches are harder and more rewarding
 			float heightBonus = RS_MIN(1.0f, state.ball.pos.z / CommonValues::CEILING_Z);
 
-			// Bonus if touch sends ball toward opponent goal
-			float oppGoalY = (player.team == Team::BLUE) ? CommonValues::BACK_WALL_Y : -CommonValues::BACK_WALL_Y;
-			Vec dirToGoal = (Vec(0, oppGoalY, state.ball.pos.z) - state.ball.pos).Normalized();
-			float goalDot = state.ball.vel.Normalized().Dot(dirToGoal);
-			float goalMult = 0.6f + 0.4f * RS_MAX(0.0f, goalDot); // 0.6 base, up to 1.0
-
-			return (0.5f + 0.5f * heightBonus) * goalMult;
+			return 0.5f + 0.5f * heightBonus;
 		}
 	};
 

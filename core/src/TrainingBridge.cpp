@@ -80,13 +80,24 @@ QVariantList NGL::TrainingBridge::rewardBreakdown() const {
 	}
 
 	QVariantList list;
-	for (auto& pair : m_metrics.rewardBreakdown) {
-		QVariantMap entry;
-		entry["name"] = QString::fromStdString(pair.first);
-		entry["value"] = pair.second;
-		auto it = weightMap.find(pair.first);
-		entry["weight"] = (it != weightMap.end()) ? it->second : -1.0f;
-		list.append(entry);
+	if (!m_metrics.rewardBreakdown.empty()) {
+		for (auto& pair : m_metrics.rewardBreakdown) {
+			QVariantMap entry;
+			entry["name"] = QString::fromStdString(pair.first);
+			entry["value"] = pair.second;
+			auto it = weightMap.find(pair.first);
+			entry["weight"] = (it != weightMap.end()) ? it->second : -1.0f;
+			list.append(entry);
+		}
+	} else {
+		// No values yet — show cached weights so rewards are visible on startup
+		for (auto& pair : weightMap) {
+			QVariantMap entry;
+			entry["name"] = QString::fromStdString(pair.first);
+			entry["value"] = 0.0f;
+			entry["weight"] = pair.second;
+			list.append(entry);
+		}
 	}
 	return list;
 }
@@ -119,6 +130,9 @@ void NGL::TrainingBridge::setRewardWeight(const QString& name, double weight) {
 	// Update trainer if running
 	if (m_trainer)
 		m_trainer->SetRewardWeight(name.toStdString(), (float)weight);
+
+	// Track as user override so it persists across start/stop
+	m_userWeightOverrides[name.toStdString()] = (float)weight;
 
 	// Always update cached weights
 	for (int i = 0; i < m_cachedRewardWeights.size(); i++) {
@@ -167,9 +181,15 @@ QString NGL::TrainingBridge::networkInfo() const {
 void NGL::TrainingBridge::start() {
 	if (m_isTraining || m_trainer) return;
 
-	// Clear cached reward data so it repopulates from current code
+	// Clear stale reward values so they repopulate from current code
 	m_metrics.rewardBreakdown.clear();
-	m_cachedRewardWeights.clear();
+
+	// Reset session accumulators
+	m_rewardBreakdownSum.clear();
+	m_rewardBreakdownCount = 0;
+	m_spsSumSession = 0;
+	m_spsCountSession = 0;
+	m_avgSPS = 0;
 
 	m_isTraining = true;
 	Q_EMIT isTrainingChanged();
@@ -180,12 +200,10 @@ void NGL::TrainingBridge::start() {
 	// Create trainer (blocks briefly during initialization)
 	m_trainer = new Trainer(m_envCreateFn, m_config, m_stepCallbackFn);
 
-	// Apply saved reward weights from cache (overrides hardcoded defaults)
-	if (!m_cachedRewardWeights.isEmpty()) {
-		for (const auto& entry : m_cachedRewardWeights) {
-			auto map = entry.toMap();
-			m_trainer->SetRewardWeight(map["name"].toString().toStdString(), map["weight"].toFloat());
-		}
+	// Apply user-edited weight overrides (from UI edits, not the full cache)
+	for (auto& pair : m_userWeightOverrides) {
+		m_trainer->SetRewardWeight(pair.first, pair.second);
+		log("  Applied user override: " + QString::fromStdString(pair.first) + " = " + QString::number(pair.second, 'f', 4));
 	}
 
 	// Read back all weights from the live trainer
@@ -247,11 +265,6 @@ void NGL::TrainingBridge::visualize() {
 
 	m_trainer = new Trainer(m_envCreateFn, m_config, m_stepCallbackFn);
 
-	// Apply saved reward weights from cache
-	for (const auto& entry : m_cachedRewardWeights) {
-		auto map = entry.toMap();
-		m_trainer->SetRewardWeight(map["name"].toString().toStdString(), map["weight"].toFloat());
-	}
 	Q_EMIT rewardWeightsChanged();
 
 	// Restore config for next normal training start
@@ -293,7 +306,6 @@ void NGL::TrainingBridge::stop() {
 void NGL::TrainingBridge::onTrainingFinished() {
 	m_metricsTimer->stop();
 	m_isTraining = false;
-	m_recentSPS.clear();
 	m_avgSPS = 0;
 	if (m_visProcess) {
 		m_visProcess->terminate();
@@ -301,6 +313,17 @@ void NGL::TrainingBridge::onTrainingFinished() {
 		m_visProcess = nullptr;
 	}
 	log("Training stopped at " + QString::number(m_metrics.totalTimesteps) + " steps");
+
+	// Cache reward weights before destroying trainer so they persist in the UI
+	m_cachedRewardWeights.clear();
+	auto weights = m_trainer->GetRewardWeights();
+	for (auto& rw : weights) {
+		QVariantMap entry;
+		entry["name"] = QString::fromStdString(rw.name);
+		entry["weight"] = rw.weight;
+		m_cachedRewardWeights.append(entry);
+	}
+
 	delete m_trainer;
 	m_trainer = nullptr;
 	m_trainThread = nullptr;
@@ -323,15 +346,21 @@ void NGL::TrainingBridge::pollMetrics() {
 	auto newMetrics = m_trainer->GetLatestMetrics();
 	if (newMetrics.totalIterations == m_metrics.totalIterations) return;
 
+	// Accumulate reward breakdown running averages before overwriting
+	m_rewardBreakdownCount++;
+	for (auto& pair : newMetrics.rewardBreakdown)
+		m_rewardBreakdownSum[pair.first] += pair.second;
+
 	m_metrics = newMetrics;
 
-	// Rolling average SPS
-	m_recentSPS.push_back(m_metrics.overallSPS);
-	while ((int)m_recentSPS.size() > AVG_SPS_WINDOW)
-		m_recentSPS.pop_front();
-	double sum = 0;
-	for (double v : m_recentSPS) sum += v;
-	m_avgSPS = m_recentSPS.empty() ? 0 : sum / m_recentSPS.size();
+	// Replace per-iteration values with session averages
+	for (auto& pair : m_rewardBreakdownSum)
+		m_metrics.rewardBreakdown[pair.first] = (float)(pair.second / m_rewardBreakdownCount);
+
+	// Session average SPS
+	m_spsSumSession += m_metrics.overallSPS;
+	m_spsCountSession++;
+	m_avgSPS = m_spsSumSession / m_spsCountSession;
 
 	appendHistory(m_rewardHistory, m_metrics.avgStepReward);
 	appendHistory(m_spsHistory, m_metrics.overallSPS);
@@ -522,6 +551,14 @@ void NGL::TrainingBridge::saveMetrics() {
 		j["rewardWeights"] = weights;
 	}
 
+	// Save user weight overrides
+	if (!m_userWeightOverrides.empty()) {
+		nlohmann::json overrides = nlohmann::json::object();
+		for (auto& pair : m_userWeightOverrides)
+			overrides[pair.first] = pair.second;
+		j["userWeightOverrides"] = overrides;
+	}
+
 	std::ofstream f(path);
 	if (f.good()) f << j.dump(4);
 }
@@ -568,6 +605,11 @@ void NGL::TrainingBridge::loadMetrics() {
 				entry["weight"] = val.get<float>();
 				m_cachedRewardWeights.append(entry);
 			}
+		}
+		if (j.contains("userWeightOverrides")) {
+			m_userWeightOverrides.clear();
+			for (auto& [key, val] : j["userWeightOverrides"].items())
+				m_userWeightOverrides[key] = val.get<float>();
 		}
 	} catch (...) {}
 }

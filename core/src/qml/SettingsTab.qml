@@ -19,33 +19,6 @@ Item {
             width: parent.width
             spacing: 12
 
-            // ── Start / Stop Button ──
-            Rectangle {
-                Layout.fillWidth: true
-                Layout.preferredHeight: 48
-                radius: 8
-                color: {
-                    var base = training.isTraining ? Theme.accentRed : Theme.accentGreen
-                    return btnArea.containsMouse ? Qt.darker(base, 1.15) : base
-                }
-
-                Text {
-                    anchors.centerIn: parent
-                    text: training.isTraining ? "Stop Training" : "Start Training"
-                    color: "#ffffff"
-                    font.pixelSize: 16
-                    font.weight: Font.Bold
-                }
-
-                MouseArea {
-                    id: btnArea
-                    anchors.fill: parent
-                    hoverEnabled: true
-                    cursorShape: Qt.PointingHandCursor
-                    onClicked: { settingsRoot.forceActiveFocus(); training.isTraining ? training.stop() : training.start() }
-                }
-            }
-
             // ── ENVIRONMENT ──
             SectionHeader { title: "ENVIRONMENT" }
 
