@@ -99,6 +99,16 @@ QVariantList NGL::TrainingBridge::rewardBreakdown() const {
 			list.append(entry);
 		}
 	}
+
+	// Sort by weighted absolute value (most contribution first)
+	std::sort(list.begin(), list.end(), [](const QVariant& a, const QVariant& b) {
+		auto am = a.toMap();
+		auto bm = b.toMap();
+		float aw = std::abs(am["value"].toFloat() * am["weight"].toFloat());
+		float bw = std::abs(bm["value"].toFloat() * bm["weight"].toFloat());
+		return aw > bw;
+	});
+
 	return list;
 }
 
@@ -347,9 +357,11 @@ void NGL::TrainingBridge::pollMetrics() {
 	if (newMetrics.totalIterations == m_metrics.totalIterations) return;
 
 	// Accumulate reward breakdown running averages before overwriting
-	m_rewardBreakdownCount++;
-	for (auto& pair : newMetrics.rewardBreakdown)
-		m_rewardBreakdownSum[pair.first] += pair.second;
+	if (!newMetrics.rewardBreakdown.empty()) {
+		m_rewardBreakdownCount++;
+		for (auto& pair : newMetrics.rewardBreakdown)
+			m_rewardBreakdownSum[pair.first] += pair.second;
+	}
 
 	m_metrics = newMetrics;
 

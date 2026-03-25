@@ -301,7 +301,13 @@ namespace RLGC {
 			if (dist > maxDist)
 				return 0;
 
-			return 1.0f;
+			// Small bonus for carrying ball toward opponent goal
+			float oppGoalY = (player.team == Team::BLUE) ? CommonValues::BACK_WALL_Y : -CommonValues::BACK_WALL_Y;
+			Vec toGoal = Vec(0, oppGoalY, state.ball.pos.z) - state.ball.pos;
+			float goalDot = state.ball.vel.Normalized().Dot(toGoal.Normalized());
+			float goalBonus = RS_MAX(0.0f, goalDot) * 0.35f;
+
+			return 1.0f + goalBonus;
 		}
 	};
 
@@ -979,14 +985,7 @@ namespace RLGC {
 			if (speedToBall < 0)
 				return 0;
 
-			float velScore = RS_MIN(1.0f, speedToBall / 1500.0f);
-
-			float oppGoalY = (player.team == Team::BLUE) ? CommonValues::BACK_WALL_Y : -CommonValues::BACK_WALL_Y;
-			Vec dirToGoal = (Vec(0, oppGoalY, state.ball.pos.z) - state.ball.pos).Normalized();
-			float goalDot = state.ball.vel.Normalized().Dot(dirToGoal);
-			float goalMult = 0.5f + 0.5f * RS_MAX(0.0f, goalDot);
-
-			float fullReward = velScore * goalMult;
+			float fullReward = 0.5f;
 
 			// On ground: 45% reward to encourage jumping toward high balls
 			if (player.isOnGround)
@@ -1210,19 +1209,24 @@ namespace RLGC {
 	class KickoffReward : public Reward {
 	public:
 		static constexpr int MAX_PLAYERS = 2;
-		static constexpr int FLIP_WINDOW_FRAMES = 18;
+		static constexpr int SUSTAIN_FRAMES = 10;
 
 		bool isKickoff = false;
 		bool ballHit = false;
 		bool firstTouchAwarded = false;
 		int ticksSinceKickoff[MAX_PLAYERS] = {};
+		float savedBonus[MAX_PLAYERS] = {};
+		int sustainLeft[MAX_PLAYERS] = {};
 
 		virtual void Reset(const GameState& initialState) override {
 			isKickoff = initialState.ball.vel.Length() < 10.0f;
 			ballHit = false;
 			firstTouchAwarded = false;
-			for (int p = 0; p < MAX_PLAYERS; p++)
+			for (int p = 0; p < MAX_PLAYERS; p++) {
 				ticksSinceKickoff[p] = 0;
+				savedBonus[p] = 0;
+				sustainLeft[p] = 0;
+			}
 		}
 
 		virtual float GetReward(const Player& player, const GameState& state, bool isFinal) override {
@@ -1234,7 +1238,6 @@ namespace RLGC {
 			}
 			if (pIdx >= MAX_PLAYERS) pIdx = 0;
 
-			float reward = 0;
 			ticksSinceKickoff[pIdx]++;
 
 			// Detect ball hit
@@ -1244,14 +1247,20 @@ namespace RLGC {
 			if (!ballHit)
 				return 0;
 
-			// First touch: speed bonus — faster arrival = more reward (doubled)
+			// First touch: base reward + speed bonus for faster arrival
 			if (!firstTouchAwarded && player.ballTouchedStep) {
 				firstTouchAwarded = true;
-				float speedBonus = RS_MAX(0.0f, 2.0f - (float)ticksSinceKickoff[pIdx] / 20.0f);
-				reward += speedBonus;
+				float speedBonus = RS_MAX(0.0f, 1.0f - (float)ticksSinceKickoff[pIdx] / 40.0f);
+				savedBonus[pIdx] = 0.5f + 4.5f * speedBonus;
+				sustainLeft[pIdx] = SUSTAIN_FRAMES;
 			}
 
-			return reward;
+			if (sustainLeft[pIdx] > 0) {
+				sustainLeft[pIdx]--;
+				return savedBonus[pIdx];
+			}
+
+			return 0;
 		}
 	};
 

@@ -169,8 +169,9 @@ Item {
                             Layout.preferredWidth: 250
                             Layout.preferredHeight: 20
 
-                            property real totalVal: getTotalAbsReward()
-                            property real pct: totalVal > 0 ? modelData.value / totalVal * 100 : 0
+                            property real weightedVal: modelData.value * Math.abs(modelData.weight)
+                            property real totalVal: getTotalAbsWeightedReward()
+                            property real pct: totalVal > 0 ? weightedVal / totalVal * 100 : 0
 
                             Rectangle {
                                 anchors.left: parent.left
@@ -215,11 +216,11 @@ Item {
         }
     }
 
-    function getTotalAbsReward() {
+    function getTotalAbsWeightedReward() {
         var total = 0
         var breakdown = rewardsRoot._breakdownModel
         for (var i = 0; i < breakdown.length; i++)
-            total += Math.abs(breakdown[i].value)
+            total += Math.abs(breakdown[i].value * breakdown[i].weight)
         return total
     }
 }
