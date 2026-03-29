@@ -337,6 +337,7 @@ void NGL::TrainingBridge::onTrainingFinished() {
 	delete m_trainer;
 	m_trainer = nullptr;
 	m_trainThread = nullptr;
+	saveMetrics();
 	Q_EMIT isTrainingChanged();
 	Q_EMIT metricsUpdated();
 }

@@ -269,49 +269,6 @@ namespace RLGC {
 	};
 
 	// =========================================================================
-	// Air dribble: ball close to car while both are airborne
-	// =========================================================================
-	class AirDribbleReward : public Reward {
-	public:
-		float maxDist;
-		float minHeight;
-		TakeoffBoostTracker takeoffTracker;
-		AirDribbleReward(float maxDist = 300.0f, float minHeight = 250.0f)
-			: maxDist(maxDist), minHeight(minHeight) {}
-
-		virtual void Reset(const GameState& initialState) override { takeoffTracker.Reset(); }
-
-		virtual float GetReward(const Player& player, const GameState& state, bool isFinal) override {
-			int pIdx = 0;
-			for (int i = 0; i < (int)state.players.size(); i++) {
-				if (&state.players[i] == &player) { pIdx = i; break; }
-			}
-			takeoffTracker.Update(player, pIdx);
-
-			if (player.isOnGround)
-				return 0;
-
-			if (takeoffTracker.Get(pIdx) < 30)
-				return 0;
-
-			if (player.pos.z < minHeight || state.ball.pos.z < minHeight)
-				return 0;
-
-			float dist = player.pos.Dist(state.ball.pos);
-			if (dist > maxDist)
-				return 0;
-
-			// Small bonus for carrying ball toward opponent goal
-			float oppGoalY = (player.team == Team::BLUE) ? CommonValues::BACK_WALL_Y : -CommonValues::BACK_WALL_Y;
-			Vec toGoal = Vec(0, oppGoalY, state.ball.pos.z) - state.ball.pos;
-			float goalDot = state.ball.vel.Normalized().Dot(toGoal.Normalized());
-			float goalBonus = RS_MAX(0.0f, goalDot) * 0.35f;
-
-			return 1.0f + goalBonus;
-		}
-	};
-
-	// =========================================================================
 	// Air roll during air dribble: small reward for using air roll input
 	// while in an air dribble state. Teaches tornado spins and car control
 	// during aerial carries — looks stylish and improves car orientation.
@@ -375,60 +332,6 @@ namespace RLGC {
 			float heightBonus = RS_MIN(1.0f, state.ball.pos.z / CommonValues::CEILING_Z);
 
 			return 0.5f + 0.5f * heightBonus;
-		}
-	};
-
-	// =========================================================================
-	// Chained aerial touch: flat bonus for each successive aerial touch
-	// without landing. Encourages sustained aerial control.
-	// =========================================================================
-	class ChainedAerialTouchReward : public Reward {
-	public:
-		static constexpr int MAX_PLAYERS = 2;
-		static constexpr int TOUCH_COOLDOWN = 5;
-		int touchCount[MAX_PLAYERS] = {};
-		int cooldown[MAX_PLAYERS] = {};
-		bool wasOnGround[MAX_PLAYERS] = { true, true };
-
-		virtual void Reset(const GameState& initialState) override {
-			for (int p = 0; p < MAX_PLAYERS; p++) {
-				touchCount[p] = 0;
-				cooldown[p] = 0;
-				wasOnGround[p] = true;
-			}
-		}
-
-		virtual float GetReward(const Player& player, const GameState& state, bool isFinal) override {
-			int pIdx = 0;
-			for (int i = 0; i < (int)state.players.size(); i++) {
-				if (&state.players[i] == &player) { pIdx = i; break; }
-			}
-			if (pIdx >= MAX_PLAYERS) pIdx = 0;
-
-			// Reset touch count on landing
-			if (player.isOnGround) {
-				touchCount[pIdx] = 0;
-				cooldown[pIdx] = 0;
-				wasOnGround[pIdx] = true;
-				return 0;
-			}
-
-			// Tick down cooldown
-			if (cooldown[pIdx] > 0)
-				cooldown[pIdx]--;
-
-			// Count aerial touches
-			if (player.ballTouchedStep && state.ball.pos.z > 300) {
-				touchCount[pIdx]++;
-
-				// Reward on 2nd touch and beyond (1st is covered by AerialTouchReward)
-				if (touchCount[pIdx] >= 2 && cooldown[pIdx] == 0) {
-					cooldown[pIdx] = TOUCH_COOLDOWN;
-					return 1.0f;
-				}
-			}
-
-			return 0;
 		}
 	};
 
@@ -788,86 +691,6 @@ namespace RLGC {
 	};
 
 	// =========================================================================
-	// Wall to air transition: event reward for jumping off a wall toward the ball.
-	// This is the critical skill that bridges wall play to aerial play.
-	// Detects: was on wall last step → now airborne → ball is nearby and above.
-	// =========================================================================
-	class WallToAirReward : public Reward {
-	public:
-		static constexpr int MAX_PLAYERS = 2;
-		static constexpr int COOLDOWN_FRAMES = 30; // ~2 seconds at tickSkip=8
-
-		// Track: was the bot on the wall with the ball nearby?
-		bool wasOnWallWithBall[MAX_PLAYERS] = {};
-		int cooldown[MAX_PLAYERS] = {};
-
-		virtual void Reset(const GameState& initialState) override {
-			for (int p = 0; p < MAX_PLAYERS; p++) {
-				wasOnWallWithBall[p] = false;
-				cooldown[p] = 0;
-			}
-		}
-
-		virtual float GetReward(const Player& player, const GameState& state, bool isFinal) override {
-			if (!player.prev)
-				return 0;
-
-			int pIdx = 0;
-			for (int i = 0; i < (int)state.players.size(); i++) {
-				if (&state.players[i] == &player) { pIdx = i; break; }
-			}
-			if (pIdx >= MAX_PLAYERS) pIdx = 0;
-
-			// Tick down cooldown
-			if (cooldown[pIdx] > 0)
-				cooldown[pIdx]--;
-
-			// Step 1: Detect "on wall with ball"
-			bool onWall = player.isOnGround && player.pos.z > 200;
-			float ballDistNow = player.pos.Dist(state.ball.pos);
-
-			if (onWall && ballDistNow < 500) {
-				wasOnWallWithBall[pIdx] = true;
-			}
-
-			// Reset if back on ground and not on wall (drove back down)
-			if (player.isOnGround && !onWall) {
-				wasOnWallWithBall[pIdx] = false;
-			}
-
-			// Step 2: Detect transition to airborne after being on wall with ball
-			if (player.isOnGround || !wasOnWallWithBall[pIdx])
-				return 0;
-
-			// Step 3: Ball must be elevated (bot popped/carried it up)
-			if (state.ball.pos.z < 200)
-				return 0;
-
-			// Step 4: Moving toward ball (actually going after it)
-			Vec dirToBall = (state.ball.pos - player.pos).Normalized();
-			float speedToBall = player.vel.Dot(dirToBall);
-			if (speedToBall < 0)
-				return 0;
-
-			// Full sequence confirmed — clear the flag (one-time event)
-			wasOnWallWithBall[pIdx] = false;
-
-			// Cooldown: no reward if fired recently (~2 seconds)
-			if (cooldown[pIdx] > 0)
-				return 0;
-			cooldown[pIdx] = COOLDOWN_FRAMES;
-
-			if (player.boost < 30)
-				return 0;
-
-			if (player.pos.Dist(state.ball.pos) > 600)
-				return 0;
-
-			return 1.0f;
-		}
-	};
-
-	// =========================================================================
 	// Flick when pressured: big bonus for flicking when opponent is close.
 	// Teaches the bot to flick over diving opponents or toward goal under pressure.
 	// =========================================================================
@@ -972,7 +795,7 @@ namespace RLGC {
 			if (state.ball.pos.z < minBallHeight)
 				return 0;
 
-			// Don't reward if already covered by AirDribbleReward (ball on car in air)
+			// Don't reward if already very close to ball in air
 			float ballDist = player.pos.Dist(state.ball.pos);
 			if (ballDist < 200 && !player.isOnGround)
 				return 0;
@@ -1177,29 +1000,55 @@ namespace RLGC {
 	};
 
 	// =========================================================================
-	// Face ball in air: reward facing toward the ball when it's elevated.
-	// Teaches the bot to track high balls instead of ignoring them.
-	// Same dead-zone logic as RelaxedFaceBallReward.
+	// Kickoff reward: velocity toward ball + boost penalty + first touch bonus.
+	// Active only while ball is at center (kickoff). Both players rewarded
+	// independently (no broken zero-sum).
 	// =========================================================================
-	class FaceBallInAirReward : public Reward {
+	class KickoffReward2 : public Reward {
 	public:
-		float minBallHeight;
-		FaceBallInAirReward(float minBallHeight = 250.0f) : minBallHeight(minBallHeight) {}
+		bool isKickoff = false;
+		bool firstTouchDone = false;
+		int ticks = 0;
+
+		virtual void Reset(const GameState& initialState) override {
+			isKickoff = initialState.ball.vel.Length() < 10.0f;
+			firstTouchDone = false;
+			ticks = 0;
+		}
 
 		virtual float GetReward(const Player& player, const GameState& state, bool isFinal) override {
-			if (state.ball.pos.z < minBallHeight)
-				return 0;
+			if (!isKickoff) return 0;
 
-			Vec dirToBall = (state.ball.pos - player.pos).Normalized();
-			float dot = player.rotMat.forward.Dot(dirToBall);
+			float reward = 0;
 
-			if (dot < 0.174f)
-				return 0;
+			// Boost penalty: punish not boosting when below max speed
+			if (ticks > 0) {
+				float speed = player.vel.Length();
+				if (player.prevAction.boost < 1.0f && speed < CommonValues::CAR_MAX_SPEED) {
+					reward -= (1.0f - player.prevAction.boost);
+				}
+			}
 
-			if (dot > 0.985f)
-				return 1.0f;
+			// Velocity toward ball (continuous incentive to drive at ball)
+			Vec dirToBall = state.ball.pos - player.pos;
+			float distToBall = dirToBall.Length();
+			if (distToBall > 0) {
+				float speedTowardBall = player.vel.Dot(dirToBall / distToBall);
+				reward += RS_MAX(0.0f, speedTowardBall / CommonValues::CAR_MAX_SPEED);
+			}
 
-			return (dot - 0.174f) / (0.985f - 0.174f);
+			// First touch bonus
+			if (!firstTouchDone && player.ballTouchedStep) {
+				firstTouchDone = true;
+				reward += 3.0f;
+			}
+
+			// End kickoff once ball is moving
+			if (state.ball.vel.Length() > 100)
+				isKickoff = false;
+
+			ticks++;
+			return reward;
 		}
 	};
 
@@ -1307,6 +1156,127 @@ namespace RLGC {
 
 			// Reward scales with alignment and depth
 			return alignment * depth;
+		}
+	};
+
+	// =========================================================================
+	// Air dribble: reward sustained aerial ball carry toward the opponent goal.
+	// Tracks carry state (ball close + above player + both airborne), awards
+	// continuous per-frame reward, a one-shot bonus for sustained carries (8+
+	// frames), and a big bonus for scoring off an air dribble.
+	// =========================================================================
+	class AirDribbleReward : public Reward {
+	public:
+		static constexpr int MAX_PLAYERS = 2;
+		static constexpr int SUSTAINED_THRESHOLD = 8;    // frames to qualify as sustained carry
+		static constexpr int GRACE_FRAMES = 3;            // brief interruption tolerance
+		static constexpr int GOAL_WINDOW_TICKS = 45;      // ~3 seconds at tickSkip=8
+
+		float minHeight;
+		float maxDist;
+
+		// Per-player carry state
+		int carryFrames[MAX_PLAYERS] = {};
+		bool sustainedCarryAwarded[MAX_PLAYERS] = {};
+		bool hadAirDribble[MAX_PLAYERS] = {};
+		int ticksSinceCarry[MAX_PLAYERS] = {};
+
+		TakeoffBoostTracker takeoffTracker;
+
+		AirDribbleReward(float minHeight = 250.0f, float maxDist = 300.0f)
+			: minHeight(minHeight), maxDist(maxDist) {}
+
+		virtual void Reset(const GameState& initialState) override {
+			takeoffTracker.Reset();
+			for (int p = 0; p < MAX_PLAYERS; p++) {
+				carryFrames[p] = 0;
+				sustainedCarryAwarded[p] = false;
+				hadAirDribble[p] = false;
+				ticksSinceCarry[p] = 0;
+			}
+		}
+
+		virtual float GetReward(const Player& player, const GameState& state, bool isFinal) override {
+			int pIdx = 0;
+			for (int i = 0; i < (int)state.players.size(); i++) {
+				if (&state.players[i] == &player) { pIdx = i; break; }
+			}
+			if (pIdx >= MAX_PLAYERS) pIdx = 0;
+
+			takeoffTracker.Update(player, pIdx);
+
+			float dist = player.pos.Dist(state.ball.pos);
+			float ballRelZ = state.ball.pos.z - player.pos.z;
+
+			// Carry state: airborne, both high enough, ball close and above, enough takeoff boost
+			bool inCarryState =
+				!player.isOnGround &&
+				player.pos.z > minHeight &&
+				state.ball.pos.z > minHeight &&
+				dist < maxDist &&
+				ballRelZ > 0 &&
+				takeoffTracker.Get(pIdx) >= 30;
+
+			float reward = 0;
+
+			// --- Carry frame tracking ---
+			if (inCarryState) {
+				carryFrames[pIdx]++;
+				ticksSinceCarry[pIdx] = 0;
+
+				// 4a: Continuous carry reward
+				float maxHeightForBonus = CommonValues::CEILING_Z - 200.0f;
+				float heightBonus = 1.0f + 0.3f * RS_MIN(1.0f, (player.pos.z - minHeight) / (maxHeightForBonus - minHeight));
+
+				float oppGoalY = (player.team == Team::BLUE) ? CommonValues::BACK_WALL_Y : -CommonValues::BACK_WALL_Y;
+				Vec dirToGoal = (Vec(0, oppGoalY, state.ball.pos.z) - state.ball.pos).Normalized();
+				float goalDot = state.ball.vel.Normalized().Dot(dirToGoal);
+				float goalMult = 0.6f + 0.4f * RS_MAX(0.0f, goalDot);
+
+				reward += heightBonus * goalMult;
+
+				// 4b: Sustained carry bonus (one-shot at 8 frames)
+				if (carryFrames[pIdx] == SUSTAINED_THRESHOLD && !sustainedCarryAwarded[pIdx]) {
+					sustainedCarryAwarded[pIdx] = true;
+					hadAirDribble[pIdx] = true;
+					reward += 3.0f;
+				}
+			} else {
+				ticksSinceCarry[pIdx]++;
+				if (ticksSinceCarry[pIdx] > GRACE_FRAMES || player.isOnGround || player.pos.z < 150) {
+					carryFrames[pIdx] = 0;
+					sustainedCarryAwarded[pIdx] = false;
+				}
+			}
+
+			// 4c: Air dribble goal bonus (check BEFORE window-clear so landing doesn't prevent it)
+			if (hadAirDribble[pIdx] && state.goalScored && isFinal) {
+				float oppGoalY = (player.team == Team::BLUE) ? CommonValues::BACK_WALL_Y : -CommonValues::BACK_WALL_Y;
+				bool weScored = (state.ball.pos.y * oppGoalY) > 0;
+				if (weScored) {
+					hadAirDribble[pIdx] = false;
+					reward += 8.0f;
+				}
+			}
+
+			// Clear goal window if too long since carry or landed
+			if (ticksSinceCarry[pIdx] > GOAL_WINDOW_TICKS || player.pos.z < 150) {
+				hadAirDribble[pIdx] = false;
+			}
+
+			return reward;
+		}
+	};
+
+	// =========================================================================
+	// Air roll: reward holding air roll right while airborne and high enough.
+	// =========================================================================
+	class AirRollReward : public Reward {
+	public:
+		virtual float GetReward(const Player& player, const GameState& state, bool isFinal) override {
+			if (player.isOnGround || player.pos.z < 250)
+				return 0;
+			return RS_MAX(0.0f, player.prevAction.roll);
 		}
 	};
 }

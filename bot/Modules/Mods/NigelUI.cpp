@@ -324,9 +324,9 @@ static void DoLoadBot(SavedConfig& sc, const char* activationOptions[], int numA
                             (LPCSTR)&nigel_unload_thr, &hm)) hm = nullptr;
     GetModuleFileNameW(hm, dllPath, MAX_PATH);
     std::filesystem::path dllP(dllPath);
-    std::filesystem::path botDir = dllP.has_parent_path()
-        ? (dllP.parent_path().parent_path() / "out" / "build" / "x64-Release" / "core" / "checkpoints")
-        : std::filesystem::path("..\\out\\build\\x64-Release\\core\\checkpoints");
+    // DLL is at bot/out/build/x64-Release/NigelSDK.dll — go up 5 levels to NigelCPP root
+    std::filesystem::path nigelRoot = dllP.parent_path().parent_path().parent_path().parent_path().parent_path();
+    std::filesystem::path botDir = nigelRoot / "out" / "build" / "x64-Release" / "core" / "checkpoints";
     newCfg.BotPath = botDir.wstring();
 
     char pbuf[512];

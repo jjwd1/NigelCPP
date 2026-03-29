@@ -24,5 +24,11 @@ bot/*.exe
 # Debug logs
 bot_debug.log
 
+# Claude Code local settings
+.claude/settings.local.json
+
+# Local docs (reference only)
+docs/
+
 # Plan files (local reference only)
 plan_*.txt
