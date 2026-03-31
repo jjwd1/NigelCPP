@@ -27,28 +27,32 @@ using namespace RLGC;
 RLGC::EnvCreateResult EnvCreateFunc(int index) {
 	std::vector<WeightedReward> rewards = {
 		{ new AirReward(), 0.185f },
-		//{ new KickoffReward(), 10.0f },
-		{ new KickoffReward2(), 8.0f },
+		{ new KickoffReward2(), 5.0f },
 		{ new PickupBoostReward(), 2.2f },
-		{ new GoalReward(), 500.0f },
+		{ new GoalReward(), 700.0f },
 		{ new ControlledTouchReward(), 1.0f },
 		{ new ShotReward(), 2.4f },
 		{ new SaveReward(), 3.0f },
 		{ new SteeringSmoothnessPenalty(), 2.0f },
 		{ new DefensivePositioningReward(), 0.2f },
-		{ new GroundDribbleReward(), 0.8f },
-		{ new FlickReward(), 20.0f },
-		{ new PowerShotReward(40, 130), 4.48f },
-		{ new FlickWhenPressuredReward(), 5.0f },
+		{ new GroundDribbleReward(), 0.2f },
+		{ new FlickReward(), 10.0f },
+		{ new PowerShotReward(40, 130), 3.0f },
+		{ new FlickWhenPressuredReward(), 3.0f },
 		{ new ZeroSumReward(new BumpReward(), 0.5f), 0.75f },
-		{ new GoForAerialReward(300), 1.1f },
-		{ new AerialTouchReward(200), 10.0f },
-		{ new AirDribbleReward(), 6.0f },
-		{ new AirRollReward(), 1.0f },
+		{ new GoForAerialReward(300), 0.5f },
+		{ new AerialTouchReward(200), 5.0f },
+		{ new AirDribbleReward(), 3.0f },
+		{ new AirRollReward(), 1.8f },
+		{ new FlipResetReward(), 500.0f },
+		{ new FlipResetFollowUpReward(), 100.0f },
+		{ new ChainedFlipResetReward(), 100.0f },
+		{ new FlipResetGoalReward(), 700.0f },
+		{ new FlipResetGuideReward(15.0f, 7.0f), 1.0f },
 	};
 
 	std::vector<TerminalCondition*> terminalConditions = {
-		new NoTouchCondition(10),
+		new NoTouchCondition(8),
 		new GoalScoreCondition()
 	};
 
@@ -56,10 +60,9 @@ RLGC::EnvCreateResult EnvCreateFunc(int index) {
 		{ new RandomState(true, true, true), 40.0f },
 		{ new KickoffState(), 20.0f },
 		{ new FuzzedKickoffState(), 5.0f },
-		{ new BallOnCarState(), 5.0f },
-		{ new WallBallState(), 5.0f },
-		{ new LooseAerialBallState(), 10.0f },
-		{ new AirDribbleSetup(), 15.0f },
+		{ new LooseAerialBallState(), 5.0f },
+		{ new WallBallState(), 10.0f },
+		{ new FlipResetSetup(), 20.0f },
 	});
 
 	int playersPerTeam = 1;
@@ -145,16 +148,16 @@ int main(int argc, char* argv[]) {
 	cfg.numGames = 256;
 	cfg.randomSeed = 123;
 
-	int tsPerItr = 150'000;
+	int tsPerItr = 200'000;
 	cfg.ppo.tsPerItr = tsPerItr;
 	cfg.ppo.batchSize = tsPerItr;
 	cfg.ppo.miniBatchSize = 50'000;
 	cfg.ppo.epochs = 1;
 	cfg.ppo.entropyScale = 0.04f;
-	cfg.ppo.gaeGamma = 0.997;
+	cfg.ppo.gaeGamma = 0.998;
 	cfg.ppo.gaeLambda = 0.95f;
-	cfg.ppo.policyLR = 0.8e-4;
-	cfg.ppo.criticLR = 0.8e-4;
+	cfg.ppo.policyLR = 0.5e-4;
+	cfg.ppo.criticLR = 0.5e-4;
 	cfg.ppo.useHalfPrecision = true;
 
 	cfg.ppo.sharedHead.layerSizes = { 1024, 1024 };

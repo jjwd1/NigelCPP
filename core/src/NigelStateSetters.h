@@ -58,55 +58,8 @@ namespace RLGC {
 	};
 
 	// Car and ball both airborne near wall — air dribble practice
-	class AirDribbleSetup : public StateSetter {
-	public:
-		void ResetArena(Arena* arena) override {
-			arena->ResetToRandomKickoff();
-			auto cars = GetCarsVec(arena);
-			if (cars.empty()) return;
-
-			float side = (RandFloat(0, 1) > 0.5f) ? 1.0f : -1.0f;
-			float y = RandFloat(-2000, 2000);
-			float height = RandFloat(400, 900);
-			float inwardX = -side * RandFloat(300, 600);
-			float pitch = RandFloat(0.3f, 0.8f);
-			float yaw = -side * (float)M_PI * 0.5f;
-
-			CarState cs = {};
-			cs.pos = { side * 3500 * 0.85f, y, height };
-			cs.vel = { inwardX, RandFloat(-200, 200), RandFloat(200, 500) };
-			cs.angVel = { 0, 0, 0 };
-			cs.rotMat = Angle(yaw, pitch, 0).ToRotMat();
-			cs.boost = RandFloat(40, 100);
-			cs.isOnGround = false;
-			cs.hasJumped = true;
-			cs.hasDoubleJumped = false;
-			cs.hasFlipped = false;
-			cars[0]->SetState(cs);
-
-			Vec fwd = cs.rotMat.forward;
-			BallState bs = {};
-			bs.pos = { cs.pos.x + fwd.x * 120, cs.pos.y + fwd.y * 120, cs.pos.z + 130 };
-			bs.vel = cs.vel * 0.85f;
-			bs.angVel = { 0, 0, 0 };
-			arena->ball->SetState(bs);
-
-			if (cars.size() > 1) {
-				CarState opp = {};
-				float oppSide = (cars[1]->team == Team::BLUE) ? -1.0f : 1.0f;
-				opp.pos = { RandFloat(-500, 500), oppSide * 4500, 17 };
-				opp.vel = { 0, 0, 0 };
-				opp.rotMat = Angle(0, 0, 0).ToRotMat();
-				opp.boost = 33;
-				opp.isOnGround = true;
-				cars[1]->SetState(opp);
-			}
-		}
-	};
-
-	// Car on ground near wall, ball on the wall surface rolling upward.
-	// Forces the bot to drive up the wall and jump off toward the ball.
-	// This is the natural bridge between ground play and aerials.
+	// Ball and car on ground, both moving toward wall.
+	// Ball rolls up the wall, car chases to pop it off for aerial play.
 	class WallBallState : public StateSetter {
 	public:
 		void ResetArena(Arena* arena) override {
@@ -118,30 +71,27 @@ namespace RLGC {
 			float side = (RandFloat(0, 1) > 0.5f) ? 1.0f : -1.0f;
 			float y = RandFloat(-3000, 3000);
 
-			// Car on ground near the wall, facing toward it
-			float yaw = -side * (float)M_PI * 0.5f; // Face toward wall
+			// Ball on ground ahead of car, moving toward wall
+			float ballSpeed = RandFloat(1700, 2500);
+			float ballY = y + RandFloat(-300, 300);
+			BallState bs = {};
+			bs.pos = { side * RandFloat(2500, 3200), ballY, 93 };
+			bs.vel = { side * ballSpeed, RandFloat(-200, 200), 0 };
+			bs.angVel = { 0, 0, 0 };
+			arena->ball->SetState(bs);
+
+			// Car on ground behind ball, chasing toward wall
+			float carSpeed = RandFloat(800, 1400);
 			CarState cs = {};
-			cs.pos = { side * 3200, y, 17 };
-			cs.vel = { side * RandFloat(500, 1000), 0, 0 }; // Driving toward wall
+			cs.pos = { side * RandFloat(1500, 2400), y, 17 };
+			// Face toward ball
+			float yaw = atan2f(ballY - y, bs.pos.x - cs.pos.x);
+			cs.vel = { cosf(yaw) * carSpeed, sinf(yaw) * carSpeed, 0 };
 			cs.angVel = { 0, 0, 0 };
 			cs.rotMat = Angle(yaw, 0, 0).ToRotMat();
 			cs.boost = RandFloat(50, 100);
 			cs.isOnGround = true;
 			cars[0]->SetState(cs);
-
-			// Ball ON the wall surface with upward velocity.
-			// Wall at x=±4096, ball radius ~93, so ball center at x=±(4096-93)=±4003.
-			// Use ±3990 to avoid clipping into wall — physics will settle it.
-			// Give upward velocity so ball rolls up the wall and stays there
-			// long enough for the car to drive up and reach it.
-			float ballHeight = RandFloat(200, 500);
-			float ballY = y + RandFloat(-300, 300);
-			float ballUpVel = RandFloat(400, 800); // Rolling upward on wall
-			BallState bs = {};
-			bs.pos = { side * 3990, ballY, ballHeight };
-			bs.vel = { 0, RandFloat(-200, 200), ballUpVel };
-			bs.angVel = { 0, 0, 0 };
-			arena->ball->SetState(bs);
 
 			if (cars.size() > 1) {
 				CarState opp = {};
@@ -169,14 +119,18 @@ namespace RLGC {
 			float ballX = RandFloat(-2500, 2500);
 			float ballY = RandFloat(-3000, 3000);
 			float ballZ = RandFloat(400, 1200);
-			// Ball with some slow drift (not stationary, more realistic)
-			float ballVx = RandFloat(-300, 300);
-			float ballVy = RandFloat(-300, 300);
-			float ballVz = RandFloat(0, 300); // Always drifting upward so ball stays airborne longer
+			// Ball drifting toward center + opponent goal, same as FlipResetSetup
+			float ballVz = RandFloat(650, 1000);
+			float ballDriftSpeed = RandFloat(700, 1300);
+			float oppGoalY = (cars[0]->team == Team::BLUE) ? 5120.0f : -5120.0f;
+			float dx = 0.0f - ballX;
+			float dy = oppGoalY - ballY;
+			float dLen = sqrtf(dx * dx + dy * dy);
+			if (dLen > 0) { dx /= dLen; dy /= dLen; }
 
 			BallState bs = {};
 			bs.pos = { ballX, ballY, ballZ };
-			bs.vel = { ballVx, ballVy, ballVz };
+			bs.vel = { dx * ballDriftSpeed, dy * ballDriftSpeed, ballVz };
 			bs.angVel = { 0, 0, 0 };
 			arena->ball->SetState(bs);
 
@@ -249,6 +203,76 @@ namespace RLGC {
 				CarState opp = {};
 				float oppSide = (cars[1]->team == Team::BLUE) ? -1.0f : 1.0f;
 				opp.pos = { RandFloat(-1000, 1000), oppSide * 4500, 17 };
+				opp.vel = { 0, 0, 0 };
+				opp.rotMat = Angle(0, 0, 0).ToRotMat();
+				opp.boost = 33;
+				opp.isOnGround = true;
+				cars[1]->SetState(opp);
+			}
+		}
+	};
+
+	// Car below ball in air, upside down, both moving upward.
+	// Bot must touch ball with wheels to earn flip reset.
+	class FlipResetSetup : public StateSetter {
+	public:
+		void ResetArena(Arena* arena) override {
+			arena->ResetToRandomKickoff();
+			auto cars = GetCarsVec(arena);
+			if (cars.empty()) return;
+
+			float x = RandFloat(-2000, 2000);
+			float y = RandFloat(-2000, 2000);
+			float ballHeight = RandFloat(700, 1300);
+
+			// Car spawns behind ball (away from opponent goal) with some spread
+			float radius = RandFloat(300, 500);
+			float oppGoalY = (cars[0]->team == Team::BLUE) ? 5120.0f : -5120.0f;
+			Vec awayFromGoal = { x, y - oppGoalY, 0 };
+			float awayLen = awayFromGoal.Length2D();
+			if (awayLen > 0) { awayFromGoal.x /= awayLen; awayFromGoal.y /= awayLen; }
+			float spread = RandFloat(-0.35f, 0.35f);
+			float baseAngle = atan2f(awayFromGoal.y, awayFromGoal.x);
+			float angle = baseAngle + spread;
+
+			float ballVz = RandFloat(650, 1000);
+			float ballDriftSpeed = RandFloat(700, 1300);
+			float dx = 0.0f - x;
+			float dy = oppGoalY - y;
+			float dLen = sqrtf(dx * dx + dy * dy);
+			if (dLen > 0) { dx /= dLen; dy /= dLen; }
+			BallState bs = {};
+			bs.pos = { x, y, ballHeight };
+			bs.vel = { dx * ballDriftSpeed, dy * ballDriftSpeed, ballVz };
+			bs.angVel = { 0, 0, 0 };
+			arena->ball->SetState(bs);
+
+			float carOffset = RandFloat(300, 500);
+			float pitch = RandFloat(0.8f, 1.3f);
+			float roll = (float)M_PI;
+			float yaw = RandFloat(-(float)M_PI, (float)M_PI);
+
+			CarState cs = {};
+			cs.pos = { x + radius * cosf(angle), y + radius * sinf(angle), ballHeight - carOffset };
+			Vec carPos = cs.pos;
+			Vec dirToBall = { bs.pos.x - carPos.x, bs.pos.y - carPos.y, bs.pos.z - carPos.z };
+			float dirLen = dirToBall.Length();
+			if (dirLen > 0) { dirToBall.x /= dirLen; dirToBall.y /= dirLen; dirToBall.z /= dirLen; }
+			float speed = RandFloat(100, 250);
+			cs.vel = { bs.vel.x + dirToBall.x * speed, bs.vel.y + dirToBall.y * speed, bs.vel.z + dirToBall.z * speed };
+			cs.angVel = { 0, 0, 0 };
+			cs.rotMat = Angle(yaw, pitch, roll).ToRotMat();
+			cs.boost = RandFloat(30, 80);
+			cs.isOnGround = false;
+			cs.hasJumped = true;
+			cs.hasDoubleJumped = true;
+			cs.hasFlipped = false;
+			cars[0]->SetState(cs);
+
+			if (cars.size() > 1) {
+				CarState opp = {};
+				float oppSide = (cars[1]->team == Team::BLUE) ? -1.0f : 1.0f;
+				opp.pos = { RandFloat(-500, 500), oppSide * 4500, 17 };
 				opp.vel = { 0, 0, 0 };
 				opp.rotMat = Angle(0, 0, 0).ToRotMat();
 				opp.boost = 33;

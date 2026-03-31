@@ -305,18 +305,29 @@ namespace RLGC {
 	// =========================================================================
 	class AerialTouchReward : public Reward {
 	public:
+		static constexpr int MAX_PLAYERS = 2;
+		static constexpr int COOLDOWN_STEPS = 23; // ~1.5 seconds at tickSkip=8
+
 		float minHeight;
 		TakeoffBoostTracker takeoffTracker;
+		int cooldown[MAX_PLAYERS] = {};
+
 		AerialTouchReward(float minHeight = 300.0f) : minHeight(minHeight) {}
 
-		virtual void Reset(const GameState& initialState) override { takeoffTracker.Reset(); }
+		virtual void Reset(const GameState& initialState) override {
+			takeoffTracker.Reset();
+			for (int p = 0; p < MAX_PLAYERS; p++) cooldown[p] = 0;
+		}
 
 		virtual float GetReward(const Player& player, const GameState& state, bool isFinal) override {
 			int pIdx = 0;
 			for (int i = 0; i < (int)state.players.size(); i++) {
 				if (&state.players[i] == &player) { pIdx = i; break; }
 			}
+			if (pIdx >= MAX_PLAYERS) pIdx = 0;
 			takeoffTracker.Update(player, pIdx);
+
+			if (cooldown[pIdx] > 0) cooldown[pIdx]--;
 
 			if (!player.ballTouchedStep)
 				return 0;
@@ -327,6 +338,11 @@ namespace RLGC {
 			// No reward if took off with less than 30 boost
 			if (takeoffTracker.Get(pIdx) < 30)
 				return 0;
+
+			if (cooldown[pIdx] > 0)
+				return 0;
+
+			cooldown[pIdx] = COOLDOWN_STEPS;
 
 			// Scale by height — higher touches are harder and more rewarding
 			float heightBonus = RS_MIN(1.0f, state.ball.pos.z / CommonValues::CEILING_Z);
@@ -341,11 +357,13 @@ namespace RLGC {
 	// Helper: detect flip reset via transition (didn't have flip -> now has flip, airborne near ball)
 	inline bool DetectFlipReset(const Player& player, const GameState& state) {
 		if (!player.prev) return false;
-		return state.ball.pos.z > 250 &&
-			player.pos.z > 250 &&
-			player.pos.Dist(state.ball.pos) < 300 &&
-			!player.prev->HasFlipReset() &&
-			player.HasFlipReset();
+		if (state.ball.pos.z <= 350 || player.pos.z <= 350) return false;
+		if (player.pos.Dist(state.ball.pos) >= 300) return false;
+		if (player.prev->HasFlipReset() || !player.HasFlipReset()) return false;
+		for (auto& p : state.players)
+			if (p.team != player.team && player.pos.Dist(p.pos) < 350.0f)
+				return false;
+		return true;
 	}
 
 	class FlipResetReward : public Reward {
@@ -527,6 +545,65 @@ namespace RLGC {
 	};
 
 	// =========================================================================
+	// Flip reset guide: only active in FlipResetSetup episodes.
+	// Rewards wheel-to-ball alignment within 300 units. Stops after first touch.
+	// =========================================================================
+	class FlipResetGuideReward : public Reward {
+	public:
+		static constexpr int MAX_PLAYERS = 2;
+		float wheelWeight;
+		float inversionWeight;
+		bool isFlipResetEpisode = false;
+		bool touched[MAX_PLAYERS] = {};
+		bool landed[MAX_PLAYERS] = {};
+
+		FlipResetGuideReward(float wheelWeight = 15.0f, float inversionWeight = 1.0f)
+			: wheelWeight(wheelWeight), inversionWeight(inversionWeight) {}
+
+		virtual void Reset(const GameState& initialState) override {
+			isFlipResetEpisode = false;
+			for (int p = 0; p < MAX_PLAYERS; p++) { touched[p] = false; landed[p] = false; }
+			for (auto& p : initialState.players) {
+				if (!p.isOnGround && p.hasDoubleJumped) {
+					isFlipResetEpisode = true;
+					break;
+				}
+			}
+		}
+
+		virtual float GetReward(const Player& player, const GameState& state, bool isFinal) override {
+			int pIdx = 0;
+			for (int i = 0; i < (int)state.players.size(); i++) {
+				if (&state.players[i] == &player) { pIdx = i; break; }
+			}
+			if (pIdx >= MAX_PLAYERS) pIdx = 0;
+
+			if (!isFlipResetEpisode) return 0;
+			if (touched[pIdx] || landed[pIdx]) return 0;
+			if (player.ballTouchedStep) { touched[pIdx] = true; return 0; }
+			if (player.isOnGround) { landed[pIdx] = true; return 0; }
+
+			float dist = player.pos.Dist(state.ball.pos);
+			if (dist > 250.0f) return 0;
+
+			Vec toBall = state.ball.pos - player.pos;
+			Vec toBallNorm = { toBall.x / dist, toBall.y / dist, toBall.z / dist };
+
+			Vec wheels = { -player.rotMat.up.x, -player.rotMat.up.y, -player.rotMat.up.z };
+			float dot = wheels.x * toBallNorm.x + wheels.y * toBallNorm.y + wheels.z * toBallNorm.z;
+
+			// Continuous ramp: 0 at 180° (dot=-1) to 1.0 at 5° (dot=0.996)
+			float wheelReward = RS_MIN(1.0f, (dot + 1.0f) / 1.996f);
+
+			// Inversion bonus: guides car to not be right-side up
+			float upZ = player.rotMat.up.z;
+			float inversionReward = RS_MIN(1.0f, 1.0f - upZ);
+
+			return wheelWeight * wheelReward + inversionWeight * inversionReward;
+		}
+	};
+
+	// =========================================================================
 	// Aerial possession: in air with ball nearby (encourages staying close to ball in air)
 	// =========================================================================
 	class AerialPossessionReward : public Reward {
@@ -572,9 +649,31 @@ namespace RLGC {
 	// =========================================================================
 	class ControlledTouchReward : public Reward {
 	public:
+		static constexpr int MAX_PLAYERS = 2;
+		static constexpr int COOLDOWN_STEPS = 23; // ~1.5 seconds at tickSkip=8
+
+		int cooldown[MAX_PLAYERS] = {};
+
+		virtual void Reset(const GameState& initialState) override {
+			for (int p = 0; p < MAX_PLAYERS; p++) cooldown[p] = 0;
+		}
+
 		virtual float GetReward(const Player& player, const GameState& state, bool isFinal) override {
+			int pIdx = 0;
+			for (int i = 0; i < (int)state.players.size(); i++) {
+				if (&state.players[i] == &player) { pIdx = i; break; }
+			}
+			if (pIdx >= MAX_PLAYERS) pIdx = 0;
+
+			if (cooldown[pIdx] > 0) cooldown[pIdx]--;
+
 			if (!state.prev || !player.ballTouchedStep)
 				return 0;
+
+			if (cooldown[pIdx] > 0)
+				return 0;
+
+			cooldown[pIdx] = COOLDOWN_STEPS;
 
 			float ballSpeedChange = fabsf(state.ball.vel.Length() - state.prev->ball.vel.Length());
 			float maxChange = 2000.0f;
