@@ -1,0 +1,12 @@
+{
+    "return_stat": {
+        "count": 16637100,
+        "mean": 79.91691125979717,
+        "var": 654433025560.7076
+    },
+    "skill_ratings": {
+        "1v1": 58.94344711303711
+    },
+    "total_iterations": 110914,
+    "total_timesteps": 14009081600
+}
