@@ -4,7 +4,6 @@
 
 #include <torch/cuda.h>
 #include <nlohmann/json.hpp>
-
 #ifdef RG_CUDA_SUPPORT
 #include <c10/cuda/CUDACachingAllocator.h>
 #endif
@@ -513,6 +512,8 @@ void NGL::Trainer::Start() {
 					for (auto& pair : report.data) {
 						if (pair.first.starts_with("Nigel/") || pair.first.starts_with("Player/") || pair.first.starts_with("Game/"))
 							latestMetrics.skillMetrics[pair.first] = pair.second;
+						if (pair.first.starts_with("Rating/"))
+							latestMetrics.skillRating = pair.second;
 					}
 				}
 

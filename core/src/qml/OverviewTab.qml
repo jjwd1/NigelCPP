@@ -56,77 +56,21 @@ Item {
                 }
             }
 
-            // Reward breakdown
+            // 1v1 Rating history
             CardFrame {
                 Layout.fillWidth: true
-                Layout.preferredHeight: Math.max(200, rewardGrid.height + 40)
-                title: "Reward Breakdown"
+                Layout.preferredHeight: 200
+                title: "1v1 Rating"
 
-                GridLayout {
-                    id: rewardGrid
-                    anchors.left: parent.left
-                    anchors.right: parent.right
-                    anchors.top: parent.top
+                MiniPlot {
+                    anchors.fill: parent
                     anchors.margins: 8
                     anchors.topMargin: 28
-                    columns: 2
-                    columnSpacing: 16
-                    rowSpacing: 4
-
-                    Repeater {
-                        model: training.rewardBreakdown
-
-                        RowLayout {
-                            Layout.fillWidth: true
-                            spacing: 8
-
-                            Text {
-                                text: modelData.name
-                                color: Theme.textSecondary
-                                font.pixelSize: 12
-                                Layout.preferredWidth: 200
-                                elide: Text.ElideRight
-                            }
-
-                            Rectangle {
-                                Layout.fillWidth: true
-                                height: 4
-                                radius: 2
-                                color: Theme.bgTertiary
-
-                                Rectangle {
-                                    property real absVal: Math.abs(modelData.value)
-                                    property real maxVal: getMaxReward()
-                                    width: parent.width * Math.min(1.0, maxVal > 0 ? absVal / maxVal : 0)
-                                    height: parent.height
-                                    radius: 2
-                                    color: modelData.value >= 0 ? Theme.accentGreen : Theme.accentRed
-                                }
-                            }
-
-                            Text {
-                                text: modelData.value.toFixed(4)
-                                color: Theme.textPrimary
-                                font.pixelSize: 11
-                                font.family: "Consolas"
-                                Layout.preferredWidth: 70
-                                horizontalAlignment: Text.AlignRight
-                            }
-                        }
-                    }
+                    dataPoints: training.ratingHistory
+                    lineColor: "#4FC3F7"
                 }
             }
         }
-    }
-
-    function getMaxReward() {
-        var maxVal = 0.001
-        var breakdown = training.rewardBreakdown
-        for (var i = 0; i < breakdown.length; i++) {
-            var v = Math.abs(breakdown[i].value)
-            if (v > maxVal) maxVal = v
-        }
-        return maxVal
     }
 
     // Stat card component

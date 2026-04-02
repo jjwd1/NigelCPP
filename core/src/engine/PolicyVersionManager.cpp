@@ -233,6 +233,10 @@ void NGL::PolicyVersionManager::OnIteration(PPOLearner* ppo, Report& report, int
 			skill.iterationsSinceRan = 0;
 			RunSkillMatches(ppo, report);
 		}
+
+		// Always report current ratings so the UI has them every iteration
+		for (auto& pair : skill.curRatings.data)
+			report["Rating/" + pair.first] = pair.second;
 	}
 }
 

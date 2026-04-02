@@ -1136,12 +1136,6 @@ namespace RLGC {
 				reward += RS_MAX(0.0f, speedTowardBall / CommonValues::CAR_MAX_SPEED);
 			}
 
-			// First touch bonus
-			if (!firstTouchDone && player.ballTouchedStep) {
-				firstTouchDone = true;
-				reward += 3.0f;
-			}
-
 			// End kickoff once ball is moving
 			if (state.ball.vel.Length() > 100)
 				isKickoff = false;
@@ -1282,7 +1276,7 @@ namespace RLGC {
 
 		TakeoffBoostTracker takeoffTracker;
 
-		AirDribbleReward(float minHeight = 250.0f, float maxDist = 300.0f)
+		AirDribbleReward(float minHeight = 250.0f, float maxDist = 350.0f)
 			: minHeight(minHeight), maxDist(maxDist) {}
 
 		virtual void Reset(const GameState& initialState) override {
@@ -1323,6 +1317,14 @@ namespace RLGC {
 				carryFrames[pIdx]++;
 				ticksSinceCarry[pIdx] = 0;
 
+				// Bouncy check: reduce reward when glued to ball
+				float bouncyScale = 1.0f;
+				if (dist < 100.0f) {
+					float relVel = (player.vel - state.ball.vel).Length();
+					if (relVel < 200.0f)
+						bouncyScale = dist / 100.0f;
+				}
+
 				// 4a: Continuous carry reward
 				float maxHeightForBonus = CommonValues::CEILING_Z - 200.0f;
 				float heightBonus = 1.0f + 0.3f * RS_MIN(1.0f, (player.pos.z - minHeight) / (maxHeightForBonus - minHeight));
@@ -1330,11 +1332,27 @@ namespace RLGC {
 				float oppGoalY = (player.team == Team::BLUE) ? CommonValues::BACK_WALL_Y : -CommonValues::BACK_WALL_Y;
 				Vec dirToGoal = (Vec(0, oppGoalY, state.ball.pos.z) - state.ball.pos).Normalized();
 				float goalDot = state.ball.vel.Normalized().Dot(dirToGoal);
-				float goalMult = 0.6f + 0.4f * RS_MAX(0.0f, goalDot);
+				float goalMult = 0.5f + 0.5f * RS_MAX(0.0f, goalDot);
 
-				reward += heightBonus * goalMult;
+				// Reduce reward in own half
+				bool inOwnHalf = (player.team == Team::BLUE) ? state.ball.pos.y < 0 : state.ball.pos.y > 0;
+				float halfMult = inOwnHalf ? 0.7f : 1.0f;
 
-				// 4b: Sustained carry bonus (one-shot at 8 frames)
+				reward += heightBonus * goalMult * bouncyScale * halfMult;
+
+				// 4b: Flip reset nudge after sustained carry (scales with proximity to ball)
+				if (carryFrames[pIdx] > 18) {
+					Vec toBall = state.ball.pos - player.pos;
+					Vec toBallNorm = { toBall.x / dist, toBall.y / dist, toBall.z / dist };
+					Vec wheels = { -player.rotMat.up.x, -player.rotMat.up.y, -player.rotMat.up.z };
+					float wDot = wheels.x * toBallNorm.x + wheels.y * toBallNorm.y + wheels.z * toBallNorm.z;
+					float wheelReward = RS_MIN(1.0f, (wDot + 1.0f) / 1.996f);
+					float inversionReward = RS_MIN(1.0f, 1.0f - player.rotMat.up.z);
+					float proxScale = 0.5f + 0.5f * (1.0f - RS_MIN(1.0f, dist / maxDist));
+					reward += proxScale * (0.58f * wheelReward + 0.29f * inversionReward);
+				}
+
+				// 4c: Sustained carry bonus (one-shot at 8 frames)
 				if (carryFrames[pIdx] == SUSTAINED_THRESHOLD && !sustainedCarryAwarded[pIdx]) {
 					sustainedCarryAwarded[pIdx] = true;
 					hadAirDribble[pIdx] = true;

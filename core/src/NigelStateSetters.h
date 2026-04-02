@@ -226,7 +226,7 @@ namespace RLGC {
 			float ballHeight = RandFloat(700, 1300);
 
 			// Car spawns behind ball (away from opponent goal) with some spread
-			float radius = RandFloat(300, 500);
+			float radius = RandFloat(200, 500);
 			float oppGoalY = (cars[0]->team == Team::BLUE) ? 5120.0f : -5120.0f;
 			Vec awayFromGoal = { x, y - oppGoalY, 0 };
 			float awayLen = awayFromGoal.Length2D();

@@ -381,6 +381,12 @@ void NGL::TrainingBridge::pollMetrics() {
 	appendHistory(m_policyLossHistory, m_metrics.policyLoss);
 	appendHistory(m_criticLossHistory, m_metrics.criticLoss);
 
+	// 1v1 skill rating
+	if (m_metrics.skillRating != 0) {
+		m_skillRating = m_metrics.skillRating;
+		appendHistory(m_ratingHistory, m_skillRating);
+	}
+
 	saveMetrics();
 	Q_EMIT metricsUpdated();
 
@@ -607,8 +613,13 @@ void NGL::TrainingBridge::loadMetrics() {
 				m_metrics.rewardBreakdown[key] = val.get<float>();
 		}
 		if (j.contains("skillMetrics")) {
-			for (auto& [key, val] : j["skillMetrics"].items())
-				m_metrics.skillMetrics[key] = val.get<float>();
+			for (auto& [key, val] : j["skillMetrics"].items()) {
+				if (key.starts_with("Rating/")) {
+					m_skillRating = val.get<float>();
+				} else {
+					m_metrics.skillMetrics[key] = val.get<float>();
+				}
+			}
 		}
 		if (j.contains("rewardWeights")) {
 			m_cachedRewardWeights.clear();

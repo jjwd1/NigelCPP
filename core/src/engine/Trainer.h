@@ -38,6 +38,9 @@ namespace NGL {
 
 		// Custom skill metrics from step callback
 		std::unordered_map<std::string, float> skillMetrics;
+
+		// Skill rating (from PolicyVersionManager)
+		float skillRating = 0;
 	};
 
 	enum class TrainerState {

@@ -72,6 +72,8 @@ namespace NGL {
 		Q_PROPERTY(QVariantList entropyHistory READ entropyHistory NOTIFY metricsUpdated)
 		Q_PROPERTY(QVariantList policyLossHistory READ policyLossHistory NOTIFY metricsUpdated)
 		Q_PROPERTY(QVariantList criticLossHistory READ criticLossHistory NOTIFY metricsUpdated)
+		Q_PROPERTY(QVariantList ratingHistory READ ratingHistory NOTIFY metricsUpdated)
+		Q_PROPERTY(double skillRating READ skillRating NOTIFY metricsUpdated)
 
 		// Config properties (editable before training starts)
 		Q_PROPERTY(int cfgNumGames READ cfgNumGames WRITE setCfgNumGames NOTIFY configChanged)
@@ -147,6 +149,8 @@ namespace NGL {
 		QVariantList entropyHistory() const { return m_entropyHistory; }
 		QVariantList policyLossHistory() const { return m_policyLossHistory; }
 		QVariantList criticLossHistory() const { return m_criticLossHistory; }
+		QVariantList ratingHistory() const { return m_ratingHistory; }
+		double skillRating() const { return m_skillRating; }
 
 		// Config getters
 		int cfgNumGames() const { return m_config.numGames; }
@@ -258,6 +262,8 @@ namespace NGL {
 		QVariantList m_entropyHistory;
 		QVariantList m_policyLossHistory;
 		QVariantList m_criticLossHistory;
+		QVariantList m_ratingHistory;
+		double m_skillRating = 0;
 
 		// Cached reward weights for display when trainer isn't running
 		QVariantList m_cachedRewardWeights;

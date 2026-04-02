@@ -26,7 +26,7 @@ using namespace RLGC;
 
 RLGC::EnvCreateResult EnvCreateFunc(int index) {
 	std::vector<WeightedReward> rewards = {
-		{ new AirReward(), 0.185f },
+		{ new AirReward(), 0.1f },
 		{ new KickoffReward2(), 5.0f },
 		{ new PickupBoostReward(), 2.2f },
 		{ new GoalReward(), 700.0f },
@@ -42,13 +42,13 @@ RLGC::EnvCreateResult EnvCreateFunc(int index) {
 		{ new ZeroSumReward(new BumpReward(), 0.5f), 0.75f },
 		{ new GoForAerialReward(300), 0.5f },
 		{ new AerialTouchReward(200), 5.0f },
-		{ new AirDribbleReward(), 3.0f },
-		{ new AirRollReward(), 1.8f },
+		{ new AirDribbleReward(), 3.3f },
+		{ new AirRollReward(), 2.3f },
 		{ new FlipResetReward(), 500.0f },
 		{ new FlipResetFollowUpReward(), 100.0f },
 		{ new ChainedFlipResetReward(), 100.0f },
 		{ new FlipResetGoalReward(), 700.0f },
-		{ new FlipResetGuideReward(15.0f, 7.0f), 1.0f },
+		{ new FlipResetGuideReward(14.0f, 6.0f), 1.0f },
 	};
 
 	std::vector<TerminalCondition*> terminalConditions = {
