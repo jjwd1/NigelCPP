@@ -221,13 +221,23 @@ namespace RLGC {
 			auto cars = GetCarsVec(arena);
 			if (cars.empty()) return;
 
+			int airIdx = 0, groundIdx = 1;
+			int airTeam = rand() % 2; // 0 = blue air, 1 = orange air
+			for (int i = 0; i < (int)cars.size(); i++) {
+				if ((cars[i]->team == Team::BLUE) == (airTeam == 0)) airIdx = i;
+				else groundIdx = i;
+			}
+			if (cars.size() < 2) { airIdx = 0; groundIdx = -1; }
+
+			float oppGoalY = (cars[airIdx]->team == Team::BLUE) ? 5120.0f : -5120.0f;
+			float ownHalfSign = (cars[airIdx]->team == Team::BLUE) ? -1.0f : 1.0f;
+
 			float x = RandFloat(-2000, 2000);
-			float y = RandFloat(-2000, 2000);
-			float ballHeight = RandFloat(700, 1300);
+			float y = ownHalfSign * RandFloat(70, 1976);
+			float ballHeight = RandFloat(891, 1218);
 
 			// Car spawns behind ball (away from opponent goal) with some spread
-			float radius = RandFloat(200, 500);
-			float oppGoalY = (cars[0]->team == Team::BLUE) ? 5120.0f : -5120.0f;
+			float radius = RandFloat(150, 338);
 			Vec awayFromGoal = { x, y - oppGoalY, 0 };
 			float awayLen = awayFromGoal.Length2D();
 			if (awayLen > 0) { awayFromGoal.x /= awayLen; awayFromGoal.y /= awayLen; }
@@ -235,8 +245,8 @@ namespace RLGC {
 			float baseAngle = atan2f(awayFromGoal.y, awayFromGoal.x);
 			float angle = baseAngle + spread;
 
-			float ballVz = RandFloat(650, 1000);
-			float ballDriftSpeed = RandFloat(700, 1300);
+			float ballVz = RandFloat(700, 1000);
+			float ballDriftSpeed = RandFloat(1100, 1900);
 			float dx = 0.0f - x;
 			float dy = oppGoalY - y;
 			float dLen = sqrtf(dx * dx + dy * dy);
@@ -247,10 +257,11 @@ namespace RLGC {
 			bs.angVel = { 0, 0, 0 };
 			arena->ball->SetState(bs);
 
-			float carOffset = RandFloat(300, 500);
-			float pitch = RandFloat(0.8f, 1.3f);
-			float roll = (float)M_PI;
-			float yaw = RandFloat(-(float)M_PI, (float)M_PI);
+			float carOffset = RandFloat(203, 338);
+			float roll = RandFloat((float)-M_PI, (float)M_PI);
+			float basePitch = RandFloat(0.3f, 0.6f);
+			float pitch = basePitch * cosf(roll);
+			float yaw = atan2f(dy, dx);
 
 			CarState cs = {};
 			cs.pos = { x + radius * cosf(angle), y + radius * sinf(angle), ballHeight - carOffset };
@@ -258,8 +269,9 @@ namespace RLGC {
 			Vec dirToBall = { bs.pos.x - carPos.x, bs.pos.y - carPos.y, bs.pos.z - carPos.z };
 			float dirLen = dirToBall.Length();
 			if (dirLen > 0) { dirToBall.x /= dirLen; dirToBall.y /= dirLen; dirToBall.z /= dirLen; }
-			float speed = RandFloat(100, 250);
-			cs.vel = { bs.vel.x + dirToBall.x * speed, bs.vel.y + dirToBall.y * speed, bs.vel.z + dirToBall.z * speed };
+			float speed = RandFloat(10, 50);
+			float velScale = 0.95f;
+			cs.vel = { bs.vel.x * velScale + dirToBall.x * speed, bs.vel.y * velScale + dirToBall.y * speed, bs.vel.z * velScale + dirToBall.z * speed };
 			cs.angVel = { 0, 0, 0 };
 			cs.rotMat = Angle(yaw, pitch, roll).ToRotMat();
 			cs.boost = RandFloat(30, 80);
@@ -267,17 +279,17 @@ namespace RLGC {
 			cs.hasJumped = true;
 			cs.hasDoubleJumped = true;
 			cs.hasFlipped = false;
-			cars[0]->SetState(cs);
+			cars[airIdx]->SetState(cs);
 
-			if (cars.size() > 1) {
+			if (groundIdx >= 0) {
 				CarState opp = {};
-				float oppSide = (cars[1]->team == Team::BLUE) ? -1.0f : 1.0f;
-				opp.pos = { RandFloat(-500, 500), oppSide * 4500, 17 };
+				float groundGoalY = (cars[groundIdx]->team == Team::BLUE) ? -5120.0f : 5120.0f;
+				opp.pos = { RandFloat(-500, 500), groundGoalY * 0.88f, 17 };
 				opp.vel = { 0, 0, 0 };
 				opp.rotMat = Angle(0, 0, 0).ToRotMat();
 				opp.boost = 33;
 				opp.isOnGround = true;
-				cars[1]->SetState(opp);
+				cars[groundIdx]->SetState(opp);
 			}
 		}
 	};

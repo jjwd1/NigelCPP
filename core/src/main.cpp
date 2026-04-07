@@ -27,13 +27,13 @@ using namespace RLGC;
 RLGC::EnvCreateResult EnvCreateFunc(int index) {
 	std::vector<WeightedReward> rewards = {
 		{ new AirReward(), 0.1f },
-		{ new KickoffReward2(), 5.0f },
+		{ new KickoffReward2(), 6.0f },
 		{ new PickupBoostReward(), 2.2f },
-		{ new GoalReward(), 700.0f },
+		{ new GoalReward(), 750.0f },
 		{ new ControlledTouchReward(), 1.0f },
 		{ new ShotReward(), 2.4f },
 		{ new SaveReward(), 3.0f },
-		{ new SteeringSmoothnessPenalty(), 2.0f },
+		{ new SteeringSmoothnessPenalty(), 10.0f },
 		{ new DefensivePositioningReward(), 0.2f },
 		{ new GroundDribbleReward(), 0.2f },
 		{ new FlickReward(), 10.0f },
@@ -42,13 +42,14 @@ RLGC::EnvCreateResult EnvCreateFunc(int index) {
 		{ new ZeroSumReward(new BumpReward(), 0.5f), 0.75f },
 		{ new GoForAerialReward(300), 0.5f },
 		{ new AerialTouchReward(200), 5.0f },
-		{ new AirDribbleReward(), 3.3f },
-		{ new AirRollReward(), 2.3f },
+		{ new AirDribbleReward(), 1.75f },
+		{ new AirRollReward(), 0.5f },
 		{ new FlipResetReward(), 500.0f },
-		{ new FlipResetFollowUpReward(), 100.0f },
-		{ new ChainedFlipResetReward(), 100.0f },
+		// { new FlipResetFollowUpReward(), 100.0f },
+		// { new ChainedFlipResetReward(), 150.0f },
 		{ new FlipResetGoalReward(), 700.0f },
-		{ new FlipResetGuideReward(14.0f, 6.0f), 1.0f },
+		{ new FlipResetGuideReward(15.0f, 7.0f), 1.0f },
+		{ new FlipResetNudgeReward(), 25.0f },
 	};
 
 	std::vector<TerminalCondition*> terminalConditions = {

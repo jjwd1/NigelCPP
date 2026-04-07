@@ -94,6 +94,9 @@ namespace RLGC {
 		float rollHistory[MAX_PLAYERS][HISTORY_SIZE] = {};
 		float throttleHistory[MAX_PLAYERS][HISTORY_SIZE] = {};
 		float pitchHistory[MAX_PLAYERS][HISTORY_SIZE] = {};
+		float jumpHistory[MAX_PLAYERS][HISTORY_SIZE] = {};
+		float boostHistory[MAX_PLAYERS][HISTORY_SIZE] = {};
+		float handbrakeHistory[MAX_PLAYERS][HISTORY_SIZE] = {};
 		int historyIndex[MAX_PLAYERS] = {};
 		bool historyFull[MAX_PLAYERS] = {};
 
@@ -104,6 +107,9 @@ namespace RLGC {
 					rollHistory[p][i] = 0;
 					throttleHistory[p][i] = 0;
 					pitchHistory[p][i] = 0;
+					jumpHistory[p][i] = 0;
+					boostHistory[p][i] = 0;
+					handbrakeHistory[p][i] = 0;
 				}
 				historyIndex[p] = 0;
 				historyFull[p] = false;
@@ -132,6 +138,24 @@ namespace RLGC {
 			return directionChanges;
 		}
 
+		int countToggleChanges(float* history, int startIdx, int count, bool full) {
+			int toggles = 0;
+			bool prevState = false;
+			bool prevSet = false;
+
+			for (int i = 0; i < count; i++) {
+				int idx = full ? (startIdx + i) % HISTORY_SIZE : i;
+				bool curState = history[idx] > 0.5f;
+
+				if (prevSet && curState != prevState) {
+					toggles++;
+				}
+				prevState = curState;
+				prevSet = true;
+			}
+			return toggles;
+		}
+
 		virtual float GetReward(const Player& player, const GameState& state, bool isFinal) override {
 			if (!player.prev)
 				return 0;
@@ -148,12 +172,18 @@ namespace RLGC {
 			float curRoll = player.isOnGround ? 0.0f : player.prevAction.roll;
 			float curThrottle = player.prevAction.throttle;
 			float curPitch = player.isOnGround ? 0.0f : player.prevAction.pitch;
+			float curJump = player.prevAction.jump;
+			float curBoost = player.prevAction.boost;
+			float curHandbrake = player.prevAction.handbrake;
 
 			int idx = historyIndex[pIdx];
 			steerHistory[pIdx][idx] = curInput;
 			rollHistory[pIdx][idx] = curRoll;
 			throttleHistory[pIdx][idx] = curThrottle;
 			pitchHistory[pIdx][idx] = curPitch;
+			jumpHistory[pIdx][idx] = curJump;
+			boostHistory[pIdx][idx] = curBoost;
+			handbrakeHistory[pIdx][idx] = curHandbrake;
 			historyIndex[pIdx] = (idx + 1) % HISTORY_SIZE;
 			if (historyIndex[pIdx] == 0) historyFull[pIdx] = true;
 
@@ -163,21 +193,32 @@ namespace RLGC {
 
 			float penalty = 0;
 
-			// Count direction changes over the history window for steer/yaw and roll.
+			// Count direction changes over the history window for analog inputs.
 			int steerChanges = countDirectionChanges(steerHistory[pIdx], historyIndex[pIdx], count, historyFull[pIdx]);
 			int rollChanges = countDirectionChanges(rollHistory[pIdx], historyIndex[pIdx], count, historyFull[pIdx]);
 			int throttleChanges = countDirectionChanges(throttleHistory[pIdx], historyIndex[pIdx], count, historyFull[pIdx]);
 			int pitchChanges = countDirectionChanges(pitchHistory[pIdx], historyIndex[pIdx], count, historyFull[pIdx]);
 
-			// 5+ direction changes in 15 frames = spamming
-			if (steerChanges >= 5)
+			// Count toggles for binary inputs.
+			int jumpChanges = countToggleChanges(jumpHistory[pIdx], historyIndex[pIdx], count, historyFull[pIdx]);
+			int boostChanges = countToggleChanges(boostHistory[pIdx], historyIndex[pIdx], count, historyFull[pIdx]);
+			int handbrakeChanges = countToggleChanges(handbrakeHistory[pIdx], historyIndex[pIdx], count, historyFull[pIdx]);
+
+			// 6+ direction changes in 15 frames = spamming (boost gets 10+ since rapid boost taps are normal)
+			if (steerChanges >= 6)
 				penalty -= 0.3f * steerChanges;
-			if (rollChanges >= 5)
+			if (rollChanges >= 6)
 				penalty -= 0.3f * rollChanges;
-			if (throttleChanges >= 5)
+			if (throttleChanges >= 6)
 				penalty -= 0.3f * throttleChanges;
-			if (pitchChanges >= 5)
+			if (pitchChanges >= 6)
 				penalty -= 0.3f * pitchChanges;
+			if (jumpChanges >= 6)
+				penalty -= 0.3f * jumpChanges;
+			if (boostChanges >= 10)
+				penalty -= 0.3f * boostChanges;
+			if (handbrakeChanges >= 6)
+				penalty -= 0.3f * handbrakeChanges;
 
 			return penalty;
 		}
@@ -368,8 +409,30 @@ namespace RLGC {
 
 	class FlipResetReward : public Reward {
 	public:
+		static constexpr int MAX_PLAYERS = 2;
+		static constexpr int COOLDOWN_TICKS = 120; // ~8 seconds at 15 steps/sec (tickSkip=8)
+		int cooldown[MAX_PLAYERS] = {};
+
+		virtual void Reset(const GameState& initialState) override {
+			for (int p = 0; p < MAX_PLAYERS; p++)
+				cooldown[p] = 0;
+		}
+
 		virtual float GetReward(const Player& player, const GameState& state, bool isFinal) override {
-			return DetectFlipReset(player, state) ? 1.0f : 0.0f;
+			int pIdx = 0;
+			for (int i = 0; i < (int)state.players.size(); i++) {
+				if (&state.players[i] == &player) { pIdx = i; break; }
+			}
+			if (pIdx >= MAX_PLAYERS) pIdx = 0;
+
+			if (cooldown[pIdx] > 0)
+				cooldown[pIdx]--;
+
+			if (DetectFlipReset(player, state) && cooldown[pIdx] == 0) {
+				cooldown[pIdx] = COOLDOWN_TICKS;
+				return 1.0f;
+			}
+			return 0.0f;
 		}
 	};
 
@@ -435,14 +498,17 @@ namespace RLGC {
 	public:
 		static constexpr int MAX_PLAYERS = 2;
 		static constexpr int CHAIN_WINDOW_TICKS = 60; // ~4 seconds at 15 steps/sec
+		static constexpr int COOLDOWN_TICKS = 12; // ~0.8 seconds at 15 steps/sec (tickSkip=8)
 		int chainCount[MAX_PLAYERS] = {};
 		int ticksSinceLastReset[MAX_PLAYERS] = {};
+		int cooldownTimer[MAX_PLAYERS] = {};
 		bool tracking[MAX_PLAYERS] = {};
 
 		virtual void Reset(const GameState& initialState) override {
 			for (int p = 0; p < MAX_PLAYERS; p++) {
 				chainCount[p] = 0;
 				ticksSinceLastReset[p] = 0;
+				cooldownTimer[p] = 0;
 				tracking[p] = false;
 			}
 		}
@@ -465,17 +531,25 @@ namespace RLGC {
 				if (player.pos.z < 150 || ticksSinceLastReset[pIdx] > CHAIN_WINDOW_TICKS) {
 					chainCount[pIdx] = 0;
 					tracking[pIdx] = false;
+					cooldownTimer[pIdx] = 0;
 				}
 			}
 
+			if (cooldownTimer[pIdx] > 0)
+				cooldownTimer[pIdx]--;
+
 			if (gotResetNow) {
 				if (tracking[pIdx]) {
+					if (cooldownTimer[pIdx] > 0)
+						return 0; // too fast, no reward
 					chainCount[pIdx]++;
 					ticksSinceLastReset[pIdx] = 0;
+					cooldownTimer[pIdx] = COOLDOWN_TICKS;
 					return (float)chainCount[pIdx];
 				} else {
 					chainCount[pIdx] = 1;
 					ticksSinceLastReset[pIdx] = 0;
+					cooldownTimer[pIdx] = COOLDOWN_TICKS;
 					tracking[pIdx] = true;
 					return 0;
 				}
@@ -595,11 +669,89 @@ namespace RLGC {
 			// Continuous ramp: 0 at 180° (dot=-1) to 1.0 at 5° (dot=0.996)
 			float wheelReward = RS_MIN(1.0f, (dot + 1.0f) / 1.996f);
 
-			// Inversion bonus: guides car to not be right-side up
-			float upZ = player.rotMat.up.z;
-			float inversionReward = RS_MIN(1.0f, 1.0f - upZ);
+			return wheelWeight * wheelReward;
+		}
+	};
 
-			return wheelWeight * wheelReward + inversionWeight * inversionReward;
+	// =========================================================================
+	// Flip reset nudge: standalone reward for orienting wheels toward ball in air.
+	// Fires anytime the bot is airborne, near the ball, and both above min height.
+	// =========================================================================
+	class FlipResetNudgeReward : public Reward {
+	public:
+		static constexpr int MAX_PLAYERS = 2;
+		static constexpr int CARRY_THRESHOLD = 23; // ~1.5 seconds at 15 steps/sec
+		static constexpr int NUDGE_WINDOW = 20;    // nudge active for 20 ticks after threshold
+		static constexpr int GRACE_FRAMES = 3;
+		static constexpr int COOLDOWN_TICKS = 120;  // ~8 seconds at 15 steps/sec
+		float minHeight = 400.0f;
+		float maxDist = 350.0f;
+		int carryFrames[MAX_PLAYERS] = {};
+		int ticksSinceCarry[MAX_PLAYERS] = {};
+		int cooldown[MAX_PLAYERS] = {};
+		TakeoffBoostTracker takeoffTracker;
+
+		virtual void Reset(const GameState& initialState) override {
+			takeoffTracker.Reset();
+			for (int p = 0; p < MAX_PLAYERS; p++) {
+				carryFrames[p] = 0;
+				ticksSinceCarry[p] = 0;
+				cooldown[p] = 0;
+			}
+		}
+
+		virtual float GetReward(const Player& player, const GameState& state, bool isFinal) override {
+			int pIdx = 0;
+			for (int i = 0; i < (int)state.players.size(); i++) {
+				if (&state.players[i] == &player) { pIdx = i; break; }
+			}
+			if (pIdx >= MAX_PLAYERS) pIdx = 0;
+			takeoffTracker.Update(player, pIdx);
+
+			if (cooldown[pIdx] > 0) {
+				cooldown[pIdx]--;
+				return 0;
+			}
+
+			float dist = player.pos.Dist(state.ball.pos);
+			float ballRelZ = state.ball.pos.z - player.pos.z;
+
+			bool inCarryState =
+				!player.isOnGround &&
+				player.pos.z > minHeight &&
+				state.ball.pos.z > minHeight &&
+				dist < maxDist && dist > 1.0f &&
+				ballRelZ > 0 &&
+				takeoffTracker.Get(pIdx) >= 30;
+
+			if (inCarryState) {
+				carryFrames[pIdx]++;
+				ticksSinceCarry[pIdx] = 0;
+			} else {
+				ticksSinceCarry[pIdx]++;
+				if (ticksSinceCarry[pIdx] > GRACE_FRAMES || player.isOnGround || player.pos.z < 150) {
+					carryFrames[pIdx] = 0;
+				}
+			}
+
+			if (carryFrames[pIdx] < CARRY_THRESHOLD) return 0;
+			if (carryFrames[pIdx] > CARRY_THRESHOLD + NUDGE_WINDOW) {
+				cooldown[pIdx] = COOLDOWN_TICKS;
+				return 0;
+			}
+			if (!inCarryState) return 0;
+			bool onOppHalf = (player.team == Team::BLUE) ? state.ball.pos.y > 0 : state.ball.pos.y < 0;
+			if (!onOppHalf) return 0;
+			if (player.vel.Length() <= state.ball.vel.Length()) return 0;
+
+			Vec toBall = state.ball.pos - player.pos;
+			Vec toBallNorm = { toBall.x / dist, toBall.y / dist, toBall.z / dist };
+			Vec wheels = { -player.rotMat.up.x, -player.rotMat.up.y, -player.rotMat.up.z };
+			float wDot = wheels.x * toBallNorm.x + wheels.y * toBallNorm.y + wheels.z * toBallNorm.z;
+			float wheelReward = RS_MIN(1.0f, (wDot + 1.0f) / 1.996f);
+			wheelReward = powf(wheelReward, 3.0f);
+			float proxScale = 0.5f + 0.5f * (1.0f - RS_MIN(1.0f, dist / maxDist));
+			return proxScale * 0.65f * wheelReward;
 		}
 	};
 
@@ -1105,18 +1257,31 @@ namespace RLGC {
 	// =========================================================================
 	class KickoffReward2 : public Reward {
 	public:
+		static constexpr int MAX_PLAYERS = 2;
+		// Speed flip stages: 0 = waiting for first jump, 1 = jumped (waiting for flip),
+		// 2 = jumped + flipped (waiting for second jump), 3 = awarded
 		bool isKickoff = false;
-		bool firstTouchDone = false;
 		int ticks = 0;
+		int speedFlipStage[MAX_PLAYERS] = {};
+		bool prevHasJumped[MAX_PLAYERS] = {};
 
 		virtual void Reset(const GameState& initialState) override {
 			isKickoff = initialState.ball.vel.Length() < 10.0f;
-			firstTouchDone = false;
 			ticks = 0;
+			for (int p = 0; p < MAX_PLAYERS; p++) {
+				speedFlipStage[p] = 0;
+				prevHasJumped[p] = false;
+			}
 		}
 
 		virtual float GetReward(const Player& player, const GameState& state, bool isFinal) override {
 			if (!isKickoff) return 0;
+
+			int pIdx = 0;
+			for (int i = 0; i < (int)state.players.size(); i++) {
+				if (&state.players[i] == &player) { pIdx = i; break; }
+			}
+			if (pIdx >= MAX_PLAYERS) pIdx = 0;
 
 			float reward = 0;
 
@@ -1133,7 +1298,29 @@ namespace RLGC {
 			float distToBall = dirToBall.Length();
 			if (distToBall > 0) {
 				float speedTowardBall = player.vel.Dot(dirToBall / distToBall);
-				reward += RS_MAX(0.0f, speedTowardBall / CommonValues::CAR_MAX_SPEED);
+				reward += 0.5f * RS_MAX(0.0f, speedTowardBall / CommonValues::CAR_MAX_SPEED);
+			}
+
+			// Speed flip kickoff reward: jump → flip in air → land → jump again
+			bool ballTouched = false;
+			for (auto& p : state.players)
+				if (p.ballTouchedStep) { ballTouched = true; break; }
+
+			if (!ballTouched && speedFlipStage[pIdx] < 3) {
+				bool jumpEdge = !prevHasJumped[pIdx] && player.hasJumped;
+				prevHasJumped[pIdx] = player.hasJumped;
+
+				if (speedFlipStage[pIdx] == 0 && jumpEdge) {
+					// First jump from ground
+					speedFlipStage[pIdx] = 1;
+				} else if (speedFlipStage[pIdx] == 1 && !player.isOnGround && (player.hasFlipped || player.isFlipping)) {
+					// Flipped while in the air after first jump
+					speedFlipStage[pIdx] = 2;
+				} else if (speedFlipStage[pIdx] == 2 && jumpEdge) {
+					// Second jump from ground after the flip
+					speedFlipStage[pIdx] = 3;
+					reward += 5.0f;
+				}
 			}
 
 			// End kickoff once ball is moving
@@ -1266,6 +1453,7 @@ namespace RLGC {
 		static constexpr int GOAL_WINDOW_TICKS = 45;      // ~3 seconds at tickSkip=8
 
 		float minHeight;
+		float minBallHeight;
 		float maxDist;
 
 		// Per-player carry state
@@ -1276,8 +1464,8 @@ namespace RLGC {
 
 		TakeoffBoostTracker takeoffTracker;
 
-		AirDribbleReward(float minHeight = 250.0f, float maxDist = 350.0f)
-			: minHeight(minHeight), maxDist(maxDist) {}
+		AirDribbleReward(float minHeight = 200.0f, float minBallHeight = 120.0f, float maxDist = 400.0f)
+			: minHeight(minHeight), minBallHeight(minBallHeight), maxDist(maxDist) {}
 
 		virtual void Reset(const GameState& initialState) override {
 			takeoffTracker.Reset();
@@ -1301,14 +1489,18 @@ namespace RLGC {
 			float dist = player.pos.Dist(state.ball.pos);
 			float ballRelZ = state.ball.pos.z - player.pos.z;
 
+			// Ball falling too fast = not a real carry
+			if (state.ball.vel.z < -400.0f)
+				return 0;
+
 			// Carry state: airborne, both high enough, ball close and above, enough takeoff boost
 			bool inCarryState =
 				!player.isOnGround &&
 				player.pos.z > minHeight &&
-				state.ball.pos.z > minHeight &&
+				state.ball.pos.z > minBallHeight &&
 				dist < maxDist &&
 				ballRelZ > 0 &&
-				takeoffTracker.Get(pIdx) >= 30;
+				takeoffTracker.Get(pIdx) >= 25;
 
 			float reward = 0;
 
@@ -1321,38 +1513,56 @@ namespace RLGC {
 				float bouncyScale = 1.0f;
 				if (dist < 100.0f) {
 					float relVel = (player.vel - state.ball.vel).Length();
-					if (relVel < 200.0f)
-						bouncyScale = dist / 100.0f;
+					if (relVel < 200.0f) {
+						float t = dist / 100.0f;
+						bouncyScale = t * t;
+					}
 				}
 
 				// 4a: Continuous carry reward
-				float maxHeightForBonus = CommonValues::CEILING_Z - 200.0f;
-				float heightBonus = 1.0f + 0.3f * RS_MIN(1.0f, (player.pos.z - minHeight) / (maxHeightForBonus - minHeight));
+				// Height bonus: 0.5-2.0x based on ball height
+				float heightBonus = RS_MIN(2.0f, RS_MAX(0.5f, state.ball.pos.z / 800.0f));
 
 				float oppGoalY = (player.team == Team::BLUE) ? CommonValues::BACK_WALL_Y : -CommonValues::BACK_WALL_Y;
 				Vec dirToGoal = (Vec(0, oppGoalY, state.ball.pos.z) - state.ball.pos).Normalized();
-				float goalDot = state.ball.vel.Normalized().Dot(dirToGoal);
-				float goalMult = 0.5f + 0.5f * RS_MAX(0.0f, goalDot);
 
 				// Reduce reward in own half
 				bool inOwnHalf = (player.team == Team::BLUE) ? state.ball.pos.y < 0 : state.ball.pos.y > 0;
 				float halfMult = inOwnHalf ? 0.7f : 1.0f;
 
-				reward += heightBonus * goalMult * bouncyScale * halfMult;
+				// Vertical bonus: must be under the ball, hard gate at 0.15
+				Vec toBall = (state.ball.pos - player.pos).Normalized();
+				if (toBall.z < 0.15f) return 0;
+				float verticalMult = 0.5f + ((toBall.z - 0.15f) / 0.85f);
 
-				// 4b: Flip reset nudge after sustained carry (scales with proximity to ball)
-				if (carryFrames[pIdx] > 18) {
-					Vec toBall = state.ball.pos - player.pos;
-					Vec toBallNorm = { toBall.x / dist, toBall.y / dist, toBall.z / dist };
-					Vec wheels = { -player.rotMat.up.x, -player.rotMat.up.y, -player.rotMat.up.z };
-					float wDot = wheels.x * toBallNorm.x + wheels.y * toBallNorm.y + wheels.z * toBallNorm.z;
-					float wheelReward = RS_MIN(1.0f, (wDot + 1.0f) / 1.996f);
-					float inversionReward = RS_MIN(1.0f, 1.0f - player.rotMat.up.z);
-					float proxScale = 0.5f + 0.5f * (1.0f - RS_MIN(1.0f, dist / maxDist));
-					reward += proxScale * (0.58f * wheelReward + 0.29f * inversionReward);
+				// Nose up check: car nose should point upward
+				float noseUp = player.rotMat.forward.z;
+				float noseMult = (noseUp <= 0.1f) ? 0.5f : 1.0f;
+
+				// Air roll: reward right roll, penalize left
+				float rollInput = player.prevAction.roll;
+				float yawInput = player.prevAction.yaw;
+				float rollMult = 1.0f;
+				if (rollInput > 0) {
+					rollMult = 1.0f + (rollInput * 0.5f);
+					if (rollInput >= 0.99f && yawInput < 0) rollMult += 0.2f; // mirrored kuxir spin
+				} else if (rollInput < 0) {
+					rollMult = 1.0f - (-rollInput * 0.5f);
 				}
 
-				// 4c: Sustained carry bonus (one-shot at 8 frames)
+				// Speed toward goal bonus (1.0-1.5x)
+				float velToGoal = state.ball.vel.Dot(dirToGoal);
+				float speedMult = 1.0f + 0.5f * RS_MIN(1.0f, RS_MAX(0.0f, velToGoal / 1800.0f));
+
+				// Flip available bonus
+				float flipMult = player.HasFlipOrJump() ? 1.3f : 1.0f;
+
+				// Distance bonus: reward being closer to ball (0.5x at max dist, 1.0x at 0)
+				float distMult = 0.5f + 0.5f * (1.0f - dist / maxDist);
+
+				reward += heightBonus * bouncyScale * halfMult * verticalMult * noseMult * rollMult * speedMult * flipMult * distMult;
+
+				// 4b: Sustained carry bonus (one-shot at 8 frames)
 				if (carryFrames[pIdx] == SUSTAINED_THRESHOLD && !sustainedCarryAwarded[pIdx]) {
 					sustainedCarryAwarded[pIdx] = true;
 					hadAirDribble[pIdx] = true;
