@@ -204,20 +204,20 @@ namespace RLGC {
 			int boostChanges = countToggleChanges(boostHistory[pIdx], historyIndex[pIdx], count, historyFull[pIdx]);
 			int handbrakeChanges = countToggleChanges(handbrakeHistory[pIdx], historyIndex[pIdx], count, historyFull[pIdx]);
 
-			// 6+ direction changes in 15 frames = spamming (boost gets 10+ since rapid boost taps are normal)
-			if (steerChanges >= 6)
+			// 7+ direction changes in 15 frames = spamming (boost gets 11+ since rapid boost taps are normal)
+			if (steerChanges >= 7)
 				penalty -= 0.3f * steerChanges;
-			if (rollChanges >= 6)
+			if (rollChanges >= 7)
 				penalty -= 0.3f * rollChanges;
-			if (throttleChanges >= 6)
+			if (throttleChanges >= 7)
 				penalty -= 0.3f * throttleChanges;
-			if (pitchChanges >= 6)
+			if (pitchChanges >= 7)
 				penalty -= 0.3f * pitchChanges;
-			if (jumpChanges >= 6)
+			if (jumpChanges >= 7)
 				penalty -= 0.3f * jumpChanges;
-			if (boostChanges >= 10)
+			if (boostChanges >= 11)
 				penalty -= 0.3f * boostChanges;
-			if (handbrakeChanges >= 6)
+			if (handbrakeChanges >= 7)
 				penalty -= 0.3f * handbrakeChanges;
 
 			return penalty;

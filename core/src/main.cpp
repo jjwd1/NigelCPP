@@ -8,6 +8,7 @@
 #include "TrainingBridge.h"
 #include "NigelRewards.h"
 #include "NigelStateSetters.h"
+#include "SmoothnessCappedAction.h"
 
 #include <RLGymCPP/Rewards/CommonRewards.h>
 #include <RLGymCPP/Rewards/ZeroSumReward.h>
@@ -42,7 +43,7 @@ RLGC::EnvCreateResult EnvCreateFunc(int index) {
 		{ new ZeroSumReward(new BumpReward(), 0.5f), 0.75f },
 		{ new GoForAerialReward(300), 0.5f },
 		{ new AerialTouchReward(200), 5.0f },
-		{ new AirDribbleReward(), 1.75f },
+		{ new AirDribbleReward(), 1.6f },
 		{ new AirRollReward(), 0.5f },
 		{ new FlipResetReward(), 500.0f },
 		// { new FlipResetFollowUpReward(), 100.0f },
@@ -74,7 +75,7 @@ RLGC::EnvCreateResult EnvCreateFunc(int index) {
 	}
 
 	EnvCreateResult result = {};
-	result.actionParser = new DefaultAction();
+	result.actionParser = new SmoothnessCappedAction();
 	result.obsBuilder = new AdvancedObs();
 	result.stateSetter = stateSetter;
 	result.terminalConditions = terminalConditions;
